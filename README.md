@@ -48,8 +48,20 @@ uv run uvicorn reserveguard.api:app --reload   # http://127.0.0.1:8000/docs
 
 ## Developing with Claude Code + ECC
 
-Project memory is in `CLAUDE.md`, and the ECC rules are in `.claude/rules/ecc/`. See [docs/WORKFLOW.md](docs/WORKFLOW.md)
-for the loop: plan, then TDD, then verify, then review, then commit.
+This project is built with [Claude Code](https://claude.com/claude-code) and the
+[ECC](https://github.com/affaan-m/ECC) plugin. Shared permissions are in `.claude/settings.json`:
+Claude may run `uv` and local `git` commands, but cannot read `.env`, run `pip install` or `git push`.
+
+Every change follows the same loop:
+
+1. **Plan**: `/ecc:plan "<feature>"`, then review and confirm the plan before any code is written.
+2. **Test first**: write a failing test, implement until it passes, then refactor.
+3. **Verify**: `uv run pytest`, `uv run ruff check --fix && uv run ruff format`, `uv run mypy src`.
+4. **Review**: `/ecc:code-review` or `/ecc:python-review`, and fix blocking findings.
+5. **Commit**: small conventional commits (`feat:`, `fix:`, `test:`, `docs:`, `chore:`).
+
+A change is done when tests pass with at least 80% coverage, ruff and mypy are clean, and
+`uv run python scripts/demo.py` passes every reconciliation check.
 
 ## Airwallex sandbox setup
 
