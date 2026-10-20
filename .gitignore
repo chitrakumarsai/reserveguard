@@ -225,5 +225,6 @@ __marimo__/
 .mypy_cache/
 .claude/settings.local.json
 
-# Markdown docs stay local only (README, CLAUDE.md, docs/, ECC rules)
+# Markdown docs stay local only (CLAUDE.md, docs/, ECC rules); the root README is published
 *.md
+!/README.md
