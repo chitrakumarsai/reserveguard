@@ -10,7 +10,6 @@ from reserveguard.airwallex.client import (
     InsufficientFundsError,
 )
 from reserveguard.airwallex.fake import FakeAirwallexClient
-from reserveguard.airwallex.rest import RestAirwallexClient
 from reserveguard.api import create_app
 from reserveguard.config import Settings
 from reserveguard.models import RiskKind, Seller, Tier
@@ -155,18 +154,6 @@ def test_fake_idempotency_and_guards() -> None:
         fake.get_status("nope")
     with pytest.raises(InsufficientFundsError):
         fake.withdraw("s", 10_000)
-
-
-def test_rest_client_is_a_skeleton() -> None:
-    client = RestAirwallexClient(Settings())
-    with pytest.raises(NotImplementedError):
-        client.get_balance(None)
-    with pytest.raises(NotImplementedError):
-        client.transfer_to_seller("a", 1, "USD", "r", "k")
-    with pytest.raises(NotImplementedError):
-        client.charge_seller("a", 1, "USD", "r", "k")
-    with pytest.raises(NotImplementedError):
-        client.get_status("x")
 
 
 def test_read_only_tools(settled: tuple[SettlementService, FakeAirwallexClient]) -> None:

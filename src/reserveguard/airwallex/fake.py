@@ -29,7 +29,8 @@ class FakeAirwallexClient:
         self._debit(account_id, amount_cents)
 
     # --- AirwallexClient ---------------------------------------------------
-    def get_balance(self, account_id: str | None) -> int:
+    def get_balance(self, account_id: str | None, currency: str = "USD") -> int:
+        """Single-currency fake: ``currency`` is accepted for protocol parity."""
         return self._balances.get(account_id, 0)
 
     def transfer_to_seller(

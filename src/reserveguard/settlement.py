@@ -193,7 +193,7 @@ class SettlementService:
         totals = self._ledger.totals(seller.seller_id)
         # Only THIS seller's balance is read; no other tenant's funds are considered.
         balance = (
-            self._client.get_balance(seller.account_id)
+            self._client.get_balance(seller.account_id, seller.currency)
             if decision.target_reserve_cents > totals.held_cents
             else 0
         )

@@ -2,8 +2,13 @@
 
 from typing import Literal, Protocol
 
-# NEW until it settles; a failed transfer or charge ends in CANCELLED.
-TransferStatus = Literal["NEW", "SETTLED", "CANCELLED"]
+# Airwallex transfer/charge statuses. NEW/PENDING are in flight; failures end in FAILED
+# (API reference) or CANCELLED (hackathon guide).
+TransferStatus = Literal["NEW", "PENDING", "SETTLED", "SUSPENDED", "FAILED", "CANCELLED"]
+TRANSFER_STATUSES: frozenset[str] = frozenset(
+    {"NEW", "PENDING", "SETTLED", "SUSPENDED", "FAILED", "CANCELLED"}
+)
+FINAL_STATUSES: frozenset[str] = frozenset({"SETTLED", "FAILED", "CANCELLED"})
 
 
 class AirwallexError(Exception):
@@ -11,18 +16,27 @@ class AirwallexError(Exception):
 
 
 class AirwallexTransientError(AirwallexError):
-    """Retryable failure (timeout, 5xx). Retry with the SAME idempotency key."""
+    """Retryable failure (timeout, 5xx, rate limit). Retry with the SAME idempotency key."""
 
 
 class InsufficientFundsError(AirwallexError):
     """The source account cannot cover the requested amount."""
 
 
-class AirwallexClient(Protocol):
-    """All amounts are integer cents. Money-moving calls require an idempotency key."""
+class AirwallexAPIError(AirwallexError):
+    """A non-retryable error response from Airwallex."""
 
-    def get_balance(self, account_id: str | None) -> int:
-        """Available balance in cents. ``None`` means the platform account."""
+    def __init__(self, status_code: int, code: str, message: str = "") -> None:
+        super().__init__(f"Airwallex {status_code} {code}: {message}".rstrip(": "))
+        self.status_code = status_code
+        self.code = code
+
+
+class AirwallexClient(Protocol):
+    """Amounts are integer minor units (cents). Money-moving calls take an idempotency key."""
+
+    def get_balance(self, account_id: str | None, currency: str = "USD") -> int:
+        """Available balance in minor units. ``None`` means the platform account."""
         ...
 
     def transfer_to_seller(
