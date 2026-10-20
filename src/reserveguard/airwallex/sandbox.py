@@ -25,6 +25,8 @@ REPORT_TYPES = frozenset(
         "PLATFORM_LIQUIDITY_EOD_BALANCE_REPORT",
     }
 )
+# Snapshot reports: Airwallex rejects any created_at/updated_at filter on these.
+UNDATED_REPORT_TYPES = frozenset({"BALANCE_REPORT", "ACCOUNT_REPORT"})
 
 
 @dataclass(frozen=True)
@@ -134,17 +136,20 @@ class SandboxAdmin:
         return account_id
 
     def create_platform_report(
-        self, report_type: str, from_created_at: str, to_created_at: str
+        self,
+        report_type: str,
+        from_created_at: str | None = None,
+        to_created_at: str | None = None,
     ) -> str:
-        """POST /platform_reports/create (CSV). ``to_created_at`` is exclusive; max 366 days."""
+        """POST /platform_reports/create (CSV). ``to_created_at`` is exclusive; max 366 days.
+        Balance and account reports are snapshots and take no date range."""
         if report_type not in REPORT_TYPES:
             raise ValueError(f"unknown report type {report_type!r}")
-        body = {
-            "type": report_type,
-            "file_format": "CSV",
-            "from_created_at": from_created_at,
-            "to_created_at": to_created_at,
-        }
+        dates = {"from_created_at": from_created_at, "to_created_at": to_created_at}
+        given = {name: value for name, value in dates.items() if value is not None}
+        if given and report_type in UNDATED_REPORT_TYPES:
+            raise ValueError(f"{report_type} does not accept a date range")
+        body = {"type": report_type, "file_format": "CSV", **given}
         return str(self._client.request("POST", f"{API}/platform_reports/create", json=body)["id"])
 
     def get_platform_report(self, report_id: str) -> PlatformReport:

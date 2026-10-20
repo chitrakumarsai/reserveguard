@@ -138,3 +138,18 @@ def test_platform_report_create_and_fetch(api: respx.MockRouter, admin: SandboxA
 def test_platform_report_rejects_unknown_type(admin: SandboxAdmin) -> None:
     with pytest.raises(ValueError, match="report type"):
         admin.create_platform_report("NOPE", "a", "b")
+
+
+def test_balance_report_sends_no_date_range(api: respx.MockRouter, admin: SandboxAdmin) -> None:
+    create = api.post("/api/v1/platform_reports/create").respond(201, json={"id": "rep_2"})
+    assert admin.create_platform_report("BALANCE_REPORT") == "rep_2"
+    assert json.loads(create.calls[0].request.content) == {
+        "type": "BALANCE_REPORT",
+        "file_format": "CSV",
+    }
+
+
+@pytest.mark.parametrize("report_type", ["BALANCE_REPORT", "ACCOUNT_REPORT"])
+def test_undated_report_rejects_date_range(admin: SandboxAdmin, report_type: str) -> None:
+    with pytest.raises(ValueError, match="date range"):
+        admin.create_platform_report(report_type, "2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z")
