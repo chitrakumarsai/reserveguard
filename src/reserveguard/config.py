@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     airwallex_client_id: str = ""
     airwallex_api_key: SecretStr = SecretStr("")
-    airwallex_base_url: str = "https://api-demo.airwallex.com"
+    airwallex_base_url: str = "https://api.sandbox.airwallex.com"
     anthropic_api_key: SecretStr = SecretStr("")
     use_fake_airwallex: bool = True
     use_llm: bool = False

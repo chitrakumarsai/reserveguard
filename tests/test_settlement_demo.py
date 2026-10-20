@@ -257,3 +257,8 @@ def test_api_maps_provider_errors_to_502() -> None:
     client = TestClient(create_app(Settings(use_fake_airwallex=True)))
     response = client.post("/settle", json={"cycle_id": "big", "gross_cents": {"A": 10**9}})
     assert response.status_code == 502
+
+
+def test_default_base_url_is_airwallex_sandbox() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.airwallex_base_url == "https://api.sandbox.airwallex.com"

@@ -2,7 +2,8 @@
 
 from typing import Literal, Protocol
 
-TransferStatus = Literal["NEW", "SETTLED"]
+# NEW until it settles; a failed transfer or charge ends in CANCELLED.
+TransferStatus = Literal["NEW", "SETTLED", "CANCELLED"]
 
 
 class AirwallexError(Exception):

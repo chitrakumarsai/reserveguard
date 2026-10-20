@@ -42,5 +42,5 @@ class RestAirwallexClient:
         raise NotImplementedError("TODO: implement charge")
 
     def get_status(self, object_id: str) -> TransferStatus:
-        """GET the transfer/charge by id; map Airwallex status to NEW or SETTLED."""
+        """GET the transfer/charge by id; map Airwallex status to NEW, SETTLED or CANCELLED."""
         raise NotImplementedError("TODO: implement status lookup")
