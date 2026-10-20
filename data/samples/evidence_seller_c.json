@@ -1,0 +1,32 @@
+[
+  {
+    "id": "ev-c-001",
+    "source": "customer_message",
+    "timestamp": "2026-10-21T08:12:00Z",
+    "text": "Order ORD-C-1001: it has been 12 days and the item never arrived. Please refund."
+  },
+  {
+    "id": "ev-c-002",
+    "source": "customer_message",
+    "timestamp": "2026-10-21T10:40:00Z",
+    "text": "Order ORD-C-1002 never arrived. Tracking hasn't moved in a week."
+  },
+  {
+    "id": "ev-c-003",
+    "source": "customer_message",
+    "timestamp": "2026-10-21T14:05:00Z",
+    "text": "My package for ORD-C-1003 never arrived and the seller is not replying."
+  },
+  {
+    "id": "ev-c-004",
+    "source": "customer_message",
+    "timestamp": "2026-10-22T09:30:00Z",
+    "text": "Item never arrived (order ORD-C-1004). Opening a dispute if not resolved."
+  },
+  {
+    "id": "ev-c-005",
+    "source": "carrier",
+    "timestamp": "2026-10-22T11:00:00Z",
+    "text": "Shipment for ORD-C-1005: delivery failed - address not found, returned to sender."
+  }
+]

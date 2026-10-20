@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- ReserveGuard ---
+*.db
+.ruff_cache/
+.mypy_cache/
+.claude/settings.local.json
+
+# Markdown docs stay local only (README, CLAUDE.md, docs/, ECC rules)
+*.md
