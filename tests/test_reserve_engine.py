@@ -26,22 +26,22 @@ DELIVERED = _signal(RiskKind.DELIVERY_CONFIRMED, 0, clears=RiskKind.COMPLAINT_CL
 
 @pytest.mark.parametrize(
     ("tier", "expected"),
-    [(Tier.TRUSTED, 500), (Tier.STANDARD, 1000), (Tier.NEW, 1000)],
+    [(Tier.TRUSTED, 500), (Tier.STANDARD, 1000), (Tier.NEW, 1500)],
 )
 def test_base_rate_by_tier(tier: Tier, expected: int) -> None:
     assert base_rate_bps(tier) == expected
 
 
 def test_rate_adds_signal_weights() -> None:
-    assert compute_rate_bps(Tier.NEW, [CLUSTER, TRACKING]) == 3000
+    assert compute_rate_bps(Tier.NEW, [CLUSTER, TRACKING]) == 3500
 
 
 def test_delivery_confirmed_removes_points_of_cleared_signal() -> None:
-    assert compute_rate_bps(Tier.NEW, [CLUSTER, TRACKING, DELIVERED]) == 1500
+    assert compute_rate_bps(Tier.NEW, [CLUSTER, TRACKING, DELIVERED]) == 2000
 
 
 def test_clearing_signal_without_target_changes_nothing() -> None:
-    assert compute_rate_bps(Tier.NEW, [TRACKING, DELIVERED]) == 1500
+    assert compute_rate_bps(Tier.NEW, [TRACKING, DELIVERED]) == 2000
 
 
 def test_rate_is_capped() -> None:
@@ -54,7 +54,7 @@ def test_rate_is_capped() -> None:
     [
         (Tier.TRUSTED, 300_000, 30_000, 15_000, 255_000),
         (Tier.STANDARD, 300_000, 30_000, 30_000, 240_000),
-        (Tier.NEW, 400_000, 40_000, 40_000, 320_000),
+        (Tier.NEW, 400_000, 40_000, 60_000, 300_000),
     ],
 )
 def test_settle_gross_matches_demo_table(
@@ -78,12 +78,12 @@ def test_large_increase_needs_approval() -> None:
         seller_id="C",
         gross_cents=400_000,
         tier=Tier.NEW,
-        current_rate_bps=1000,
-        held_cents=40_000,
+        current_rate_bps=1500,
+        held_cents=60_000,
         signals=[CLUSTER, TRACKING],
     )
-    assert decision.new_rate_bps == 3000
-    assert decision.target_reserve_cents == 120_000
+    assert decision.new_rate_bps == 3500
+    assert decision.target_reserve_cents == 140_000
     assert decision.needs_approval is True
     assert decision.evidence_ids == ("ev-1",)
 
@@ -115,7 +115,7 @@ def test_cents_threshold_alone_triggers_approval() -> None:
 
 
 def test_shortfall_charges_up_to_balance_and_records_debt() -> None:
-    plan = plan_adjustment(target_cents=120_000, held_cents=40_000, seller_balance_cents=50_000)
+    plan = plan_adjustment(target_cents=140_000, held_cents=60_000, seller_balance_cents=50_000)
     assert (plan.charge_cents, plan.debt_cents, plan.release_cents) == (50_000, 30_000, 0)
 
 
@@ -126,7 +126,7 @@ def test_shortfall_fully_covered_leaves_no_debt() -> None:
 
 def test_lower_target_cancels_debt_and_releases() -> None:
     plan = plan_adjustment(
-        target_cents=60_000, held_cents=90_000, seller_balance_cents=0, existing_debt_cents=30_000
+        target_cents=80_000, held_cents=110_000, seller_balance_cents=0, existing_debt_cents=30_000
     )
     assert (plan.charge_cents, plan.debt_cents, plan.release_cents) == (0, 0, 30_000)
     assert plan.debt_cancelled_cents == 30_000
@@ -138,4 +138,9 @@ def test_plan_rejects_negative_inputs() -> None:
 
 
 def test_clearing_only_applies_to_earlier_signals() -> None:
-    assert compute_rate_bps(Tier.NEW, [DELIVERED, CLUSTER]) == 2500
+    assert compute_rate_bps(Tier.NEW, [DELIVERED, CLUSTER]) == 3000
+
+
+def test_newest_sellers_get_the_highest_base_reserve() -> None:
+    """Hackathon Kit 8: "assign the highest reserve to the newest seller"."""
+    assert base_rate_bps(Tier.NEW) > max(base_rate_bps(t) for t in Tier if t is not Tier.NEW)

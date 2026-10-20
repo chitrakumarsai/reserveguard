@@ -14,7 +14,7 @@ APPROVAL_AMOUNT_INCREASE_CENTS = 50_000
 _BASE_RATES_BPS: dict[Tier, int] = {
     Tier.TRUSTED: 500,
     Tier.STANDARD: 1_000,
-    Tier.NEW: 1_000,
+    Tier.NEW: 1_500,  # Kit 8: the newest seller carries the highest reserve
 }
 
 
