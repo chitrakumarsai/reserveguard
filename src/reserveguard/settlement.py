@@ -63,6 +63,9 @@ class SettlementService:
     def __init__(self, client: AirwallexClient, sellers: Sequence[Seller]) -> None:
         _validate_unique(sellers)
         self._client = client
+        # The platform account may hold money this ledger never touched (e.g. sandbox float),
+        # so reconciliation compares only what moved after this point.
+        self._opening_balance_cents = client.get_balance(None)
         self._states = {s.seller_id: _SellerState(s, base_rate_bps(s.tier)) for s in sellers}
         self._ledger = Ledger()
         self._settled: dict[tuple[str, str], SettlementLine] = {}
@@ -85,8 +88,12 @@ class SettlementService:
         return self._state(seller_id).memos
 
     def reconciliation(self) -> list[CheckResult]:
+        """The platform holds this cycle's gross as collected, then pays out of it, so its
+        ledger-attributable balance is opening movement plus gross collected."""
         with self._lock:
-            return run_checks(self._ledger, self._client.get_balance(None))
+            moved = self._client.get_balance(None) - self._opening_balance_cents
+            gross = sum(self._ledger.totals(s).gross_cents for s in self._ledger.seller_ids())
+            return run_checks(self._ledger, moved + gross)
 
     # --- commands ------------------------------------------------------------
     def settle_cycle(

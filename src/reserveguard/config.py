@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     airwallex_api_key: SecretStr = SecretStr("")
     airwallex_base_url: str = "https://api.sandbox.airwallex.com"
     anthropic_api_key: SecretStr = SecretStr("")
+    # Bearer token for the HTTP API; while empty, every endpoint but /health returns 503.
+    reserveguard_api_token: SecretStr = SecretStr("")
     use_fake_airwallex: bool = True
     use_llm: bool = False
     llm_model: str = DEFAULT_LLM_MODEL

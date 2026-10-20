@@ -6,4 +6,4 @@ import time) and any ``Settings()`` see these values; env vars take precedence o
 
 import os
 
-os.environ.update({"USE_FAKE_AIRWALLEX": "true", "USE_LLM": "false"})
+os.environ.update({"USE_FAKE_AIRWALLEX": "true", "USE_LLM": "false", "RESERVEGUARD_API_TOKEN": ""})

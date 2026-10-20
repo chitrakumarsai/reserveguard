@@ -173,8 +173,14 @@ def test_draft_memo_mentions_rates_and_evidence() -> None:
     assert "15.00%" in memo and "35.00%" in memo and "approval" in memo
 
 
+def _api_client() -> TestClient:
+    token = "t"  # noqa: S105 - test fixture, not a credential
+    settings = Settings(use_fake_airwallex=True, reserveguard_api_token=token)
+    return TestClient(create_app(settings), headers={"Authorization": f"Bearer {token}"})
+
+
 def test_api_endpoints() -> None:
-    client = TestClient(create_app(Settings(use_fake_airwallex=True)))
+    client = _api_client()
     assert client.get("/health").json() == {"status": "ok"}
     assert len(client.get("/sellers").json()) == 3
     settle = client.post("/settle", json={"cycle_id": "c1", "gross_cents": DEMO_GROSS_CENTS})
@@ -186,11 +192,6 @@ def test_api_endpoints() -> None:
     assert bad.status_code == 404
     negative = client.post("/settle", json={"cycle_id": "c3", "gross_cents": {"A": -1}})
     assert negative.status_code == 422
-
-
-def test_api_refuses_real_client_until_implemented() -> None:
-    with pytest.raises(RuntimeError, match="RestAirwallexClient"):
-        create_app(Settings(use_fake_airwallex=False))
 
 
 def test_replaying_a_cycle_never_pays_twice() -> None:
@@ -241,7 +242,7 @@ def test_duplicate_sellers_are_rejected() -> None:
 
 
 def test_api_maps_provider_errors_to_502() -> None:
-    client = TestClient(create_app(Settings(use_fake_airwallex=True)))
+    client = _api_client()
     response = client.post("/settle", json={"cycle_id": "big", "gross_cents": {"A": 10**9}})
     assert response.status_code == 502
 

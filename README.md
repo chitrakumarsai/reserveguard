@@ -18,7 +18,7 @@ Built for the Airwallex Agentic Banking Hackathon (Multi-Tenant Platforms, Kit 8
 | `airwallex/sandbox.py` | Setup helpers (sandbox only) | Global account and deposit funding, seller onboarding (create → submit → ACTIVE), platform reports |
 | `agent/evidence.py` | Keyword rule, or Claude behind `USE_LLM` | Turns evidence into risk signals that cite evidence ids |
 | `agent/tools.py` | Read-only helpers | Seller views and memo drafting for the LLM. Never moves money |
-| `api.py` | FastAPI app | `/health`, `/sellers`, `/settle`, `/reconciliation` |
+| `api.py` | FastAPI app | `/health`, `/sellers`, `/settle`, `/reconciliation`; bearer token on all but `/health`; fake or real client per `USE_FAKE_AIRWALLEX` |
 
 The LLM never sets amounts and never holds Airwallex keys. Every number comes from deterministic code.
 
@@ -45,6 +45,14 @@ uv run python scripts/demo.py
 uv run uvicorn reserveguard.api:app --reload   # http://127.0.0.1:8000/docs
 ```
 
+The API needs `RESERVEGUARD_API_TOKEN` set in `.env` (any long random string, e.g.
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`). Without it every endpoint
+except `/health` returns 503. Send it as a bearer token:
+
+```bash
+curl -H "Authorization: Bearer $RESERVEGUARD_API_TOKEN" http://127.0.0.1:8000/sellers
+```
+
 
 ## Developing with Claude Code + ECC
 
@@ -66,11 +74,47 @@ A change is done when tests pass with at least 80% coverage, ruff and mypy are c
 ## Airwallex sandbox setup
 
 1. Sign up for an Airwallex sandbox account at https://www.airwallex.com.
-2. Create API keys under **Account > Developer** and put them in `.env`.
-3. Email **devhelp@airwallex.com** to ask for platform (connected accounts) access.
-4. When creating connected accounts in the sandbox, use the business name **"Sandbox Business"**
-   and give each connected account an EIN.
-5. `RestAirwallexClient` and `SandboxAdmin` are implemented and tested against mocks only. The API server and demo still use the fake until they are wired to real seller account ids.
+2. Create a restricted API key under **Account > Developer** with only these account
+   permissions, and put the Client ID and key in `.env`:
+
+   | Section | Permission | Access |
+   |---|---|---|
+   | Core Resources | Balances | Read |
+   | Core Resources | Global Accounts | Read + Write |
+   | Simulations | Simulations | Write |
+   | Embedded Finance | Connected Accounts | Read + Write |
+   | Embedded Finance | Transfers | Read + Write |
+   | Embedded Finance | Charges | Read + Write |
+   | Embedded Finance | Platform Reports | Read + Write |
+
+   Leave global permissions and **Payouts → Transfers** (bank payouts) off.
+3. Email **devhelp@airwallex.com** with your sandbox email and **Client ID**, asking for both
+   **connected accounts** and **platform payments**. They are separate switches; without platform
+   payments, `connected_account_transfers/create` and `charges/create` fail. Until then,
+   onboarding fails with `This account cannot onboard business accounts`.
+4. Onboard the demo sellers (each is a "Sandbox Business" with an EIN, auto-approved in the
+   sandbox). This writes their account ids to `data/sandbox_sellers.json` (git-ignored),
+   saving after each seller so a failed run resumes where it stopped (`--force` starts over):
+
+   ```bash
+   uv run python scripts/sandbox_setup.py
+   ```
+5. Run the demo against the sandbox, or start the API with `USE_FAKE_AIRWALLEX=false`:
+
+   ```bash
+   uv run python scripts/demo.py --live
+   ```
+
+   The live run waits for every transfer and charge to settle before reconciling. Seller C
+   keeps its whole payout in the sandbox, so step 2 charges the full shortfall instead of
+   recording debt, so the amounts from step 2 on differ from the scenario below.
+
+Login, balances, global accounts, simulated deposits and platform reports have been checked
+against the live sandbox. Seller onboarding, transfers and charges are tested against mocks
+until platform access is enabled.
+
+The sandbox platform account starts with money that is not part of this ledger, so the
+`platform_balance` check compares only what moved after the service started.
 
 ## Demo scenario
 
@@ -103,7 +147,8 @@ src/reserveguard/
   airwallex/{client,fake,money,rest,sandbox}.py
   agent/{evidence,tools}.py
 tests/            pytest suite (unit + integration)
-scripts/demo.py   demo scenario runner
+scripts/demo.py   demo scenario runner (--live for the Airwallex sandbox)
+scripts/sandbox_setup.py  onboards sellers A, B, C in the sandbox
 data/samples/     sample evidence for Seller C
 ```
 

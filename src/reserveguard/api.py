@@ -1,13 +1,21 @@
-"""HTTP API over a SettlementService (fake Airwallex until the REST client lands)."""
+"""HTTP API over a SettlementService.
 
+Uses the fake Airwallex client unless USE_FAKE_AIRWALLEX=false, in which case it moves
+real (sandbox) money for the sellers in data/sandbox_sellers.json. Every endpoint except
+/health needs ``Authorization: Bearer <RESERVEGUARD_API_TOKEN>``.
+"""
+
+import secrets
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, NonNegativeInt
 
 from reserveguard.airwallex.client import AirwallexError
 from reserveguard.config import Settings, get_settings
-from reserveguard.scenario import build_demo_service
+from reserveguard.scenario import SANDBOX_SELLERS_PATH, build_service
 from reserveguard.settlement import SettlementLine, SettlementService
 
 
@@ -37,22 +45,40 @@ def get_service(request: Request) -> SettlementService:
 
 
 ServiceDep = Annotated[SettlementService, Depends(get_service)]
+_bearer = HTTPBearer(auto_error=False)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    settings = settings or get_settings()
-    if not settings.use_fake_airwallex:
-        raise RuntimeError(
-            "RestAirwallexClient is not implemented yet; set USE_FAKE_AIRWALLEX=true"
+def require_token(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> None:
+    """Fail closed: no configured token means no access, not open access."""
+    expected: str = request.app.state.api_token
+    if not expected:
+        raise HTTPException(status_code=503, detail="API token not configured")
+    given = credentials.credentials if credentials else ""
+    if not secrets.compare_digest(given.encode(), expected.encode()):
+        raise HTTPException(
+            status_code=401, detail="invalid token", headers={"WWW-Authenticate": "Bearer"}
         )
+
+
+Authorized = [Depends(require_token)]
+
+
+def create_app(
+    settings: Settings | None = None, sellers_path: Path = SANDBOX_SELLERS_PATH
+) -> FastAPI:
+    settings = settings or get_settings()
     app = FastAPI(title="ReserveGuard")
-    app.state.service, _ = build_demo_service()
+    app.state.service, _ = build_service(settings, sellers_path)
+    app.state.api_token = settings.reserveguard_api_token.get_secret_value()
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/sellers", response_model=list[SellerOut])
+    @app.get("/sellers", response_model=list[SellerOut], dependencies=Authorized)
     def sellers(service: ServiceDep) -> list[SellerOut]:
         out = []
         for seller in service.sellers:
@@ -69,8 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return out
 
-    # TODO: authenticate this money-moving endpoint before connecting the real client.
-    @app.post("/settle", response_model=list[SettlementLine])
+    @app.post("/settle", response_model=list[SettlementLine], dependencies=Authorized)
     def settle(body: SettleRequest, service: ServiceDep) -> list[SettlementLine]:
         try:
             return service.settle_cycle(body.gross_cents, cycle_id=body.cycle_id)
@@ -79,7 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except AirwallexError as exc:
             raise HTTPException(status_code=502, detail="payment provider error") from exc
 
-    @app.get("/reconciliation", response_model=list[CheckOut])
+    @app.get("/reconciliation", response_model=list[CheckOut], dependencies=Authorized)
     def reconciliation(service: ServiceDep) -> list[CheckOut]:
         return [
             CheckOut(name=c.name, passed=c.passed, detail=c.detail)

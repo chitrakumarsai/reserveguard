@@ -1,9 +1,18 @@
-"""Run the ReserveGuard demo scenario against FakeAirwallexClient."""
+"""Run the ReserveGuard demo scenario.
 
+Default: in-memory FakeAirwallexClient. With --live: the Airwallex sandbox, using the
+sellers onboarded by scripts/sandbox_setup.py (moves sandbox money).
+"""
+
+import argparse
 import sys
+from datetime import UTC, datetime
 
 from reserveguard.agent.evidence import classify_evidence, load_evidence
 from reserveguard.agent.tools import format_pct, format_usd
+from reserveguard.airwallex.client import AirwallexClient
+from reserveguard.airwallex.fake import FakeAirwallexClient
+from reserveguard.airwallex.rest import RestAirwallexClient
 from reserveguard.config import Settings
 from reserveguard.ledger import SellerTotals
 from reserveguard.models import CheckResult, ReserveDecision
@@ -12,9 +21,9 @@ from reserveguard.scenario import (
     DELIVERY_CONFIRMATIONS,
     DEMO_GROSS_CENTS,
     SAMPLE_EVIDENCE_PATH,
-    build_demo_service,
+    build_service,
 )
-from reserveguard.settlement import SettlementLine
+from reserveguard.settlement import SettlementLine, SettlementService
 
 SELLER_C = "C"
 C_WALLET_AFTER_WITHDRAWAL_CENTS = 50_000
@@ -73,39 +82,67 @@ def print_checks(results: list[CheckResult]) -> bool:
     return all(r.passed for r in results)
 
 
+def all_settled(service: SettlementService, client: AirwallexClient) -> bool:
+    """Live only: wait until Airwallex finishes every transfer and charge so far."""
+    if not isinstance(client, RestAirwallexClient):
+        return True
+    ok = True
+    for entry in service.ledger.entries:
+        if entry.object_id is not None:
+            status = client.wait_for_settlement(entry.object_id)
+            if status != "SETTLED":
+                print(f"  [FAIL] {entry.kind.value} {entry.object_id} ended {status}")
+                ok = False
+    return ok
+
+
+def reconcile(service: SettlementService, client: AirwallexClient) -> bool:
+    settled = all_settled(service, client)
+    return print_checks(service.reconciliation()) and settled
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--live", action="store_true", help="use the Airwallex sandbox")
+    live = parser.parse_args().live
+
     offline = Settings(use_llm=False)
-    service, fake = build_demo_service()
+    service, client = build_service(Settings(use_fake_airwallex=not live))
+    # Live idempotency keys derive from the cycle id, so each live run needs a fresh one.
+    cycle_id = f"live-{datetime.now(UTC):%Y%m%d%H%M%S}" if live else "2026-10-cycle-1"
+    seller_c = next(s for s in service.sellers if s.seller_id == SELLER_C)
     ok = True
 
-    heading("Settlement cycle (USD, fee 10%)")
-    print_settlement(service.settle_cycle(DEMO_GROSS_CENTS, cycle_id="2026-10-cycle-1"))
-    ok &= print_checks(service.reconciliation())
+    heading(f"Settlement cycle (USD, fee 10%){' - Airwallex sandbox' if live else ''}")
+    print_settlement(service.settle_cycle(DEMO_GROSS_CENTS, cycle_id=cycle_id))
+    ok &= reconcile(service, client)
 
     heading("Step 1: new risk evidence for Seller C")
     signals = classify_evidence(load_evidence(SAMPLE_EVIDENCE_PATH), offline)
     for s in signals:
         print(f"  signal {s.kind.value} (+{s.weight_bps} bps) from {', '.join(s.evidence_ids)}")
     print_decision(service.assess(SELLER_C, signals))
-    ok &= print_checks(service.reconciliation())
+    ok &= reconcile(service, client)
 
     heading("Step 2: ops approval -> shortfall plan")
-    excess = fake.get_balance("acct_seller_c") - C_WALLET_AFTER_WITHDRAWAL_CENTS
-    fake.withdraw("acct_seller_c", excess)
-    print(f"Seller C wallet before charge: {usd(fake.get_balance('acct_seller_c'))}")
+    if isinstance(client, FakeAirwallexClient):
+        # Seller C spends most of its payout, so the charge can only partly cover the gap.
+        excess = client.get_balance(seller_c.account_id) - C_WALLET_AFTER_WITHDRAWAL_CENTS
+        client.withdraw(seller_c.account_id, excess)
+    print(f"Seller C wallet before charge: {usd(client.get_balance(seller_c.account_id))}")
     result = service.approve(SELLER_C)
     print_plan(result.plan)
     print(f"Memo: {result.memo}")
     for seller_id in ("A", "B", SELLER_C):
         print_totals(service.ledger.totals(seller_id))
-    ok &= print_checks(service.reconciliation())
+    ok &= reconcile(service, client)
 
     heading("Step 3: deliveries confirmed -> release")
     decision = service.assess(SELLER_C, classify_evidence(DELIVERY_CONFIRMATIONS, offline))
     print_decision(decision)
     print(f"Memo: {service.memos(SELLER_C)[-1]}")
     print_totals(service.ledger.totals(SELLER_C))
-    ok &= print_checks(service.reconciliation())
+    ok &= reconcile(service, client)
 
     heading("Result")
     print("All reconciliation checks passed." if ok else "Some reconciliation checks FAILED.")
