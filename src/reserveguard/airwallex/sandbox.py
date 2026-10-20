@@ -101,7 +101,7 @@ class SandboxAdmin:
             json={
                 "country_code": country_code,
                 "request_id": str(uuid.uuid4()),
-                "required_features": [{"currency": currency}],
+                "required_features": [{"currency": currency, "transfer_method": "LOCAL"}],
             },
         )
         return str(created["id"])

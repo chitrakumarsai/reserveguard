@@ -76,7 +76,7 @@ def test_creates_global_account_when_missing(api: respx.MockRouter, admin: Sandb
     create = api.post("/api/v1/global_accounts/create").respond(201, json={"id": "ga_new"})
     assert admin.ensure_global_account("USD", "US") == "ga_new"
     body = json.loads(create.calls[0].request.content)
-    assert body["required_features"] == [{"currency": "USD"}]
+    assert body["required_features"] == [{"currency": "USD", "transfer_method": "LOCAL"}]
     assert body["country_code"] == "US" and body["request_id"]
 
 
