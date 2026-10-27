@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 
 from reserveguard.agent.evidence import load_evidence
 from reserveguard.airwallex.client import AirwallexTransientError
-from reserveguard.api import create_app
+from reserveguard.airwallex.fake import FakeAirwallexClient
+from reserveguard.airwallex.rest import RestAirwallexClient
+from reserveguard.api import create_app, settlement_waiter
 from reserveguard.config import Settings
 from reserveguard.scenario import DELIVERY_CONFIRMATIONS, DEMO_GROSS_CENTS, SAMPLE_EVIDENCE_PATH
 
@@ -101,6 +103,61 @@ def test_provider_errors_map_to_502(
 
     assert response.status_code == 502
     assert "sandbox down" not in response.text  # provider details stay server-side
+
+
+def _watch_settlement(client: TestClient, status: str = "SETTLED") -> list[str]:
+    """Replace the settlement wait with a spy that returns ``status``."""
+    waited: list[str] = []
+
+    def wait(object_id: str) -> str:
+        waited.append(object_id)
+        return status
+
+    client.app.state.await_settlement = wait  # type: ignore[attr-defined]
+    return waited
+
+
+def test_approve_waits_for_its_charge_to_settle(client: TestClient) -> None:
+    _assess(client, "C", RISK_EVIDENCE)
+    waited = _watch_settlement(client)
+
+    assert client.post("/sellers/C/approve").status_code == 200
+
+    entries = client.app.state.service.ledger.entries  # type: ignore[attr-defined]
+    assert waited == [entries[-1].object_id]  # only the new charge, not earlier payouts
+
+
+def test_settle_and_auto_release_wait_for_their_transfers(client: TestClient) -> None:
+    waited = _watch_settlement(client)
+    client.post("/settle", json={"cycle_id": "c2", "gross_cents": {"A": 100_000}})
+    assert len(waited) == 1
+    _assess(client, "C", RISK_EVIDENCE)
+    client.post("/sellers/C/approve")
+    _assess(client, "C", DELIVERIES)
+    assert len(waited) == 3  # payout, charge, release
+
+
+def test_live_client_polls_airwallex_until_final() -> None:
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        airwallex_client_id="cid",
+        airwallex_api_key="key",
+    )
+    live = RestAirwallexClient(settings)
+    fake = FakeAirwallexClient({})
+
+    assert settlement_waiter(live) == live.wait_for_settlement
+    assert settlement_waiter(fake) == fake.get_status
+
+
+def test_payment_that_does_not_settle_is_a_502(client: TestClient) -> None:
+    _assess(client, "C", RISK_EVIDENCE)
+    _watch_settlement(client, status="FAILED")
+
+    response = client.post("/sellers/C/approve")
+
+    assert response.status_code == 502
+    assert "did not settle" in response.json()["detail"]
 
 
 def test_reserve_endpoints_require_the_token(client: TestClient) -> None:

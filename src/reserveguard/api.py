@@ -6,6 +6,7 @@ real (sandbox) money for the sellers in data/sandbox_sellers.json. Every endpoin
 """
 
 import secrets
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -14,7 +15,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, NonNegativeInt
 
 from reserveguard.agent.evidence import EvidenceItem, classify_evidence
-from reserveguard.airwallex.client import AirwallexError
+from reserveguard.airwallex.client import AirwallexClient, AirwallexError, TransferStatus
+from reserveguard.airwallex.rest import RestAirwallexClient
 from reserveguard.config import Settings, get_settings
 from reserveguard.models import ReserveDecision, RiskSignal
 from reserveguard.reserve_engine import AdjustmentPlan
@@ -88,12 +90,29 @@ def require_token(
 Authorized = [Depends(require_token)]
 
 
+def settlement_waiter(client: AirwallexClient) -> Callable[[str], TransferStatus]:
+    """Live: poll Airwallex until the payment is final. Fake: payments are final at once."""
+    if isinstance(client, RestAirwallexClient):
+        return client.wait_for_settlement
+    return client.get_status
+
+
+def await_new_payments(request: Request, service: SettlementService, since: int) -> None:
+    """Block until every payment recorded after ledger entry ``since`` has SETTLED, so a
+    reconciliation right after this request sees the money where the ledger says it is."""
+    wait: Callable[[str], str] = request.app.state.await_settlement
+    for entry in service.ledger.entries[since:]:
+        if entry.object_id is not None and wait(entry.object_id) != "SETTLED":
+            raise HTTPException(status_code=502, detail="payment did not settle")
+
+
 def create_app(
     settings: Settings | None = None, sellers_path: Path = SANDBOX_SELLERS_PATH
 ) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="ReserveGuard")
-    app.state.service, _ = build_service(settings, sellers_path)
+    app.state.service, client = build_service(settings, sellers_path)
+    app.state.await_settlement = settlement_waiter(client)
     app.state.api_token = settings.reserveguard_api_token.get_secret_value()
 
     @app.get("/health")
@@ -118,20 +137,27 @@ def create_app(
         return out
 
     @app.post("/settle", response_model=list[SettlementLine], dependencies=Authorized)
-    def settle(body: SettleRequest, service: ServiceDep) -> list[SettlementLine]:
+    def settle(body: SettleRequest, service: ServiceDep, request: Request) -> list[SettlementLine]:
+        since = len(service.ledger.entries)
         try:
-            return service.settle_cycle(body.gross_cents, cycle_id=body.cycle_id)
+            lines = service.settle_cycle(body.gross_cents, cycle_id=body.cycle_id)
+            await_new_payments(request, service, since)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown seller") from exc
         except AirwallexError as exc:
             raise HTTPException(status_code=502, detail="payment provider error") from exc
+        return lines
 
     @app.post("/sellers/{seller_id}/assess", response_model=AssessOut, dependencies=Authorized)
-    def assess(seller_id: str, body: AssessRequest, service: ServiceDep) -> AssessOut:
+    def assess(
+        seller_id: str, body: AssessRequest, service: ServiceDep, request: Request
+    ) -> AssessOut:
         """Re-rate ONE seller. The LLM only names signals; weights and amounts are fixed."""
         signals = classify_evidence(body.evidence, settings)
+        since = len(service.ledger.entries)
         try:
             decision = service.assess(seller_id, signals)
+            await_new_payments(request, service, since)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown seller") from exc
         except AirwallexError as exc:
@@ -140,9 +166,11 @@ def create_app(
         return AssessOut(decision=decision, signals=signals, memo=memo)
 
     @app.post("/sellers/{seller_id}/approve", response_model=ApproveOut, dependencies=Authorized)
-    def approve(seller_id: str, service: ServiceDep) -> ApproveOut:
+    def approve(seller_id: str, service: ServiceDep, request: Request) -> ApproveOut:
+        since = len(service.ledger.entries)
         try:
             result = service.approve(seller_id)
+            await_new_payments(request, service, since)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown seller") from exc
         except LookupError as exc:
