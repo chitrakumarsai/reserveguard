@@ -42,7 +42,7 @@ def admin() -> SandboxAdmin:
         airwallex_client_id="cid",
         airwallex_api_key="key",
     )
-    return SandboxAdmin(RestAirwallexClient(settings, sleep=lambda _s: None))
+    return SandboxAdmin(RestAirwallexClient(settings, sleep=lambda _s: None), sleep=lambda _s: None)
 
 
 def test_refuses_non_sandbox_base_url() -> None:
@@ -103,8 +103,54 @@ def test_onboard_seller_runs_create_submit_activate(
         {"country_code": "US", "number": "12-3456789", "type": "EIN"}
     ]
     assert created["nickname"] == "Seller C"
+    # Fields the sandbox requires at submit (found against the live sandbox).
+    assert business["business_structure"] == "CORPORATION"
+    assert business["description_of_goods_or_services"]
+    assert business["industry_category_code"].startswith("ICCV3_")
+    assert business["operating_country"] == ["US"]
+    assert business["account_usage"]["estimated_monthly_revenue"]["currency"] == "USD"
+    assert "COLLECT_MARKETPLACE_PROCEEDS" in business["account_usage"]["product_reference"]
+    [person] = created["account_details"]["business_person_details"]
+    assert person["email"] == "seller-c@example.com"
+    assert person["residential_address"]["postcode"] == "94105"
+    assert {"BENEFICIAL_OWNER", "DIRECTOR", "AUTHORISED_PERSON"} <= set(person["roles"])
+    agreements = created["customer_agreements"]
+    assert agreements["agreed_to_terms_and_conditions"] is True
+    assert agreements["agreed_to_data_usage"] is True
     assert submit.call_count == 1
     assert json.loads(activate.calls[0].request.content) == {"next_status": "ACTIVE", "force": True}
+
+
+def test_onboard_seller_waits_for_submission_before_activating(
+    api: respx.MockRouter, admin: SandboxAdmin
+) -> None:
+    api.post("/api/v1/accounts/create").respond(201, json={"id": "acct_c"})
+    api.post("/api/v1/accounts/acct_c/submit").respond(200, json={})
+    activate = api.post("/api/v1/simulation/accounts/acct_c/update_status").respond(200, json={})
+    status = api.get("/api/v1/accounts/acct_c")
+    status.side_effect = [
+        respx.MockResponse(200, json={"status": "CREATED"}),
+        respx.MockResponse(200, json={"status": "SUBMITTED"}),
+        respx.MockResponse(200, json={"status": "ACTIVE"}),
+    ]
+
+    assert admin.onboard_seller(SPEC) == "acct_c"
+
+    assert status.call_count == 3
+    assert activate.call_count == 1
+
+
+def test_onboard_seller_gives_up_if_never_submitted(
+    api: respx.MockRouter, admin: SandboxAdmin
+) -> None:
+    api.post("/api/v1/accounts/create").respond(201, json={"id": "acct_c"})
+    api.post("/api/v1/accounts/acct_c/submit").respond(200, json={})
+    activate = api.post("/api/v1/simulation/accounts/acct_c/update_status")
+    api.get("/api/v1/accounts/acct_c").respond(200, json={"status": "CREATED"})
+
+    with pytest.raises(AirwallexAPIError, match="still CREATED"):
+        admin.onboard_seller(SPEC)
+    assert activate.call_count == 0
 
 
 def test_onboard_seller_fails_if_not_active(api: respx.MockRouter, admin: SandboxAdmin) -> None:

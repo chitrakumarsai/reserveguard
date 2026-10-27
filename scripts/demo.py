@@ -106,8 +106,8 @@ def main() -> int:
     parser.add_argument("--live", action="store_true", help="use the Airwallex sandbox")
     live = parser.parse_args().live
 
-    offline = Settings(use_llm=False)
-    service, client = build_service(Settings(use_fake_airwallex=not live))
+    settings = Settings(use_fake_airwallex=not live)
+    service, client = build_service(settings)
     # Live idempotency keys derive from the cycle id, so each live run needs a fresh one.
     cycle_id = f"live-{datetime.now(UTC):%Y%m%d%H%M%S}" if live else "2026-10-cycle-1"
     seller_c = next(s for s in service.sellers if s.seller_id == SELLER_C)
@@ -118,7 +118,9 @@ def main() -> int:
     ok &= reconcile(service, client)
 
     heading("Step 1: new risk evidence for Seller C")
-    signals = classify_evidence(load_evidence(SAMPLE_EVIDENCE_PATH), offline)
+    classifier = f"Claude ({settings.llm_model})" if settings.use_llm else "keyword rules"
+    print(f"Classifier: {classifier}")
+    signals = classify_evidence(load_evidence(SAMPLE_EVIDENCE_PATH), settings)
     for s in signals:
         print(f"  signal {s.kind.value} (+{s.weight_bps} bps) from {', '.join(s.evidence_ids)}")
     print_decision(service.assess(SELLER_C, signals))
@@ -138,7 +140,7 @@ def main() -> int:
     ok &= reconcile(service, client)
 
     heading("Step 3: deliveries confirmed -> release")
-    decision = service.assess(SELLER_C, classify_evidence(DELIVERY_CONFIRMATIONS, offline))
+    decision = service.assess(SELLER_C, classify_evidence(DELIVERY_CONFIRMATIONS, settings))
     print_decision(decision)
     print(f"Memo: {service.memos(SELLER_C)[-1]}")
     print_totals(service.ledger.totals(SELLER_C))

@@ -146,7 +146,9 @@ def _mock_onboarding(api: respx.MockRouter, ids: list[str]) -> respx.Route:
 
 
 def _admin() -> SandboxAdmin:
-    return SandboxAdmin(RestAirwallexClient(_settings(), sleep=lambda _s: None))
+    return SandboxAdmin(
+        RestAirwallexClient(_settings(), sleep=lambda _s: None), sleep=lambda _s: None
+    )
 
 
 def test_onboard_demo_sellers_saves_every_account(api: respx.MockRouter, tmp_path: Path) -> None:

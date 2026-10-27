@@ -109,9 +109,15 @@ A change is done when tests pass with at least 80% coverage, ruff and mypy are c
    keeps its whole payout in the sandbox, so step 2 charges the full shortfall instead of
    recording debt, so the amounts from step 2 on differ from the scenario below.
 
-Login, balances, global accounts, simulated deposits and platform reports have been checked
-against the live sandbox. Seller onboarding, transfers and charges are tested against mocks
-until platform access is enabled.
+   The demo classifies evidence with Claude when `.env` has `USE_LLM=true`, and with the
+   keyword rule otherwise; it prints which one it used. Set `USE_LLM=false` for a repeatable
+   offline run.
+
+The full flow has run end to end on the live sandbox: seller onboarding, payouts, the
+shortfall charge and the reserve release all settled, and every reconciliation check passed.
+
+If login fails with 401 or 403 although `.env` is right, check your shell for exported
+`AIRWALLEX_*` variables: environment variables override `.env`.
 
 The sandbox platform account starts with money that is not part of this ledger, so the
 `platform_balance` check compares only what moved after the service started.
