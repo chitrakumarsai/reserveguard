@@ -13,6 +13,7 @@ from reserveguard.airwallex.sandbox import ConnectedAccountSpec, SandboxAdmin
 from reserveguard.config import Settings
 from reserveguard.models import Seller, Tier
 from reserveguard.settlement import PaymentWaiter, SettlementService
+from reserveguard.store import SqliteStore
 
 _DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 SAMPLE_EVIDENCE_PATH = _DATA_DIR / "samples" / "evidence_seller_c.json"
@@ -52,7 +53,13 @@ def build_service(
     accounts = load_seller_accounts(sellers_path)
     sellers = tuple(replace(s, account_id=accounts[s.seller_id]) for s in DEMO_SELLERS)
     client = RestAirwallexClient(settings)
-    return SettlementService(client, sellers, await_payment=payment_waiter(client)), client
+    service = SettlementService(
+        client,
+        sellers,
+        await_payment=payment_waiter(client),
+        store=SqliteStore(settings.reserveguard_db_path),
+    )
+    return service, client
 
 
 def payment_waiter(client: AirwallexClient) -> PaymentWaiter:

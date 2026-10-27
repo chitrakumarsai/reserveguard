@@ -3,7 +3,8 @@
 import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 
 from pydantic import BaseModel, ConfigDict
@@ -32,6 +33,7 @@ from reserveguard.reserve_engine import (
     propose_reserve_change,
     settle_gross,
 )
+from reserveguard.store import Snapshot, SqliteStore, StoreError
 
 MAX_ATTEMPTS = 3
 # One command (settle, assess, approve) waits at most this long for all its payments.
@@ -98,6 +100,22 @@ class SellerStatement:
     wallet_cents: int
 
 
+class _StoredSeller(BaseModel):
+    rate_bps: int
+    gross_cents: int
+    signals: tuple[RiskSignal, ...]
+    pending: ReserveDecision | None
+    memos: tuple[str, ...]
+
+
+class _StoredState(BaseModel):
+    """Everything besides the ledger rows that must survive a restart."""
+
+    sellers: dict[str, _StoredSeller]
+    settled: list[tuple[str, str, SettlementLine]]
+    unconfirmed: list[str]
+
+
 @dataclass(frozen=True)
 class _SellerState:
     seller: Seller
@@ -116,21 +134,29 @@ class SettlementService:
         *,
         await_payment: PaymentWaiter | None = None,
         clock: Callable[[], float] = time.monotonic,
+        store: SqliteStore | None = None,
     ) -> None:
+        """With a ``store``, state is loaded from it and saved after every command."""
         _validate_unique(sellers)
         self._client = client
         self._await = await_payment or (lambda object_id, _left: client.get_status(object_id))
         self._clock = clock
         self._deadline = 0.0
+        self._store = store
         self._unconfirmed: set[str] = set()
-        # The platform account may hold money this ledger never touched (e.g. sandbox float),
-        # so reconciliation compares only what moved after this point.
-        self._opening_balance_cents = client.get_balance(None)
         self._states = {s.seller_id: _SellerState(s, base_rate_bps(s.tier)) for s in sellers}
         self._ledger = Ledger()
         self._settled: dict[tuple[str, str], SettlementLine] = {}
         self._lock = threading.RLock()
         self.last_settlement: tuple[SettlementLine, ...] = ()
+        snapshot = store.load() if store else None
+        if snapshot is None:
+            # The platform account may hold money this ledger never touched (e.g. sandbox
+            # float), so reconciliation compares only what moved after this point.
+            self._opening_balance_cents = client.get_balance(None)
+            self._persist()
+        else:
+            self._restore(snapshot)
 
     # --- read views ----------------------------------------------------------
     @property
@@ -197,9 +223,8 @@ class SettlementService:
         self, gross_by_seller: Mapping[str, int], *, cycle_id: str
     ) -> list[SettlementLine]:
         """Settle one cycle. Replaying the same cycle_id never pays a seller twice."""
-        with self._lock:
+        with self._command():
             states = [self._state(seller_id) for seller_id in gross_by_seller]  # validate first
-            self._start_deadline()
             lines = []
             for state in states:
                 seller_id = state.seller.seller_id
@@ -226,9 +251,8 @@ class SettlementService:
     ) -> tuple[ReserveDecision, str | None]:
         """assess(), plus the memo when the change was applied at once (None while pending).
         ``hold_releases`` sends any decrease to approve() as well."""
-        with self._lock:
+        with self._command():
             state = self._state(seller_id)
-            self._start_deadline()
             fresh = tuple(s for s in dict.fromkeys(new_signals) if s not in state.signals)
             signals = (*state.signals, *fresh)
             decision = propose_reserve_change(
@@ -248,11 +272,10 @@ class SettlementService:
             return decision, self._apply(decision, signals).memo
 
     def approve(self, seller_id: str) -> AdjustmentResult:
-        with self._lock:
+        with self._command():
             state = self._state(seller_id)
             if state.pending is None:
                 raise LookupError(f"no pending reserve decision for seller {seller_id}")
-            self._start_deadline()
             return self._apply(state.pending, state.signals)
 
     # --- internals -----------------------------------------------------------
@@ -274,7 +297,10 @@ class SettlementService:
         b = settle_gross(gross_cents, state.rate_bps)
         ref = f"settle:{cycle_id}:{seller.seller_id}"
         # Deterministic key: a replay of this cycle after a crash reuses it, so Airwallex dedupes.
-        key = str(uuid.uuid5(_KEY_NAMESPACE, f"payout:{cycle_id}:{seller.seller_id}"))
+        # The amount is part of the key: the same cycle with a different amount is a new payout.
+        key = str(
+            uuid.uuid5(_KEY_NAMESPACE, f"payout:{cycle_id}:{seller.seller_id}:{b.payout_cents}")
+        )
         transfer_id = None
         if b.payout_cents > 0:
             transfer_id = self._with_retry(
@@ -362,6 +388,64 @@ class SettlementService:
             existing_debt_cents=totals.debt_cents,
         )
         return plan, balance
+
+    @contextmanager
+    def _command(self) -> Iterator[None]:
+        """One money command: under the lock, with one wait deadline, saved on the way out
+        even when it fails part-way (a payment recorded as pending must not be forgotten)."""
+        with self._lock:
+            self._start_deadline()
+            try:
+                yield
+            finally:
+                self._persist()
+
+    def _persist(self) -> None:
+        if self._store is None:
+            return
+        state = _StoredState(
+            sellers={
+                seller_id: _StoredSeller(
+                    rate_bps=s.rate_bps,
+                    gross_cents=s.gross_cents,
+                    signals=s.signals,
+                    pending=s.pending,
+                    memos=s.memos,
+                )
+                for seller_id, s in self._states.items()
+            },
+            settled=[(cycle, seller, line) for (cycle, seller), line in self._settled.items()],
+            unconfirmed=sorted(self._unconfirmed),
+        )
+        self._store.save(
+            Snapshot(
+                opening_balance_cents=self._opening_balance_cents,
+                accounts={sid: s.seller.account_id for sid, s in self._states.items()},
+                entries=self._ledger.entries,
+                state=state.model_dump(mode="json"),
+            )
+        )
+
+    def _restore(self, snapshot: Snapshot) -> None:
+        accounts = {sid: s.seller.account_id for sid, s in self._states.items()}
+        if dict(snapshot.accounts) != accounts:
+            raise StoreError(
+                "seller accounts differ from the stored ledger; refusing to mix sellers' money"
+            )
+        state = _StoredState.model_validate(snapshot.state)
+        self._opening_balance_cents = snapshot.opening_balance_cents
+        self._ledger = Ledger(entries=snapshot.entries)
+        self._settled = {(cycle, seller): line for cycle, seller, line in state.settled}
+        self._unconfirmed = set(state.unconfirmed)
+        for seller_id, stored in state.sellers.items():
+            self._states[seller_id] = replace(
+                self._states[seller_id],
+                rate_bps=stored.rate_bps,
+                gross_cents=stored.gross_cents,
+                signals=stored.signals,
+                pending=stored.pending,
+                memos=stored.memos,
+            )
 
     def _start_deadline(self) -> None:
         self._deadline = self._clock() + PAYMENT_WAIT_BUDGET_S

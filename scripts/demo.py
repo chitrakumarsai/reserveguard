@@ -6,8 +6,10 @@ sellers onboarded by scripts/sandbox_setup.py (moves sandbox money).
 
 import argparse
 import sys
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 
@@ -155,7 +157,10 @@ def main() -> int:
     parser.add_argument("--live", action="store_true", help="use the Airwallex sandbox")
     live = parser.parse_args().live
 
-    settings = Settings(use_fake_airwallex=not live)
+    # The demo is a scripted scenario that assumes a fresh ledger, so each run gets its own
+    # throwaway database instead of the API's persistent one.
+    run_db = Path(tempfile.mkdtemp(prefix="reserveguard-demo-")) / "ledger.db"
+    settings = Settings(use_fake_airwallex=not live, reserveguard_db_path=run_db)
     service, client = build_service(settings)
     # Live idempotency keys derive from the cycle id, so each live run needs a fresh one.
     started_at = datetime.now(UTC)

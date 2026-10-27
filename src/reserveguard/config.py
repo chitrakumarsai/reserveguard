@@ -1,6 +1,7 @@
 """Runtime settings, read from environment / .env."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,8 @@ class Settings(BaseSettings):
     use_fake_airwallex: bool = True
     use_llm: bool = False
     llm_model: str = DEFAULT_LLM_MODEL
+    # Live mode keeps its ledger here so a restart loses nothing (fake mode stays in memory).
+    reserveguard_db_path: Path = Path("data/reserveguard.db")
 
 
 @lru_cache

@@ -25,6 +25,7 @@ from reserveguard.scenario import (
     save_seller_accounts,
 )
 from reserveguard.settlement import SettlementService
+from reserveguard.store import SqliteStore
 
 pytestmark = pytest.mark.integration
 
@@ -126,6 +127,23 @@ def test_build_service_live_maps_real_account_ids(
     assert isinstance(client, RestAirwallexClient)
     assert {s.seller_id: s.account_id for s in service.sellers} == ACCOUNTS
     assert [s.tier for s in service.sellers] == [s.tier for s in DEMO_SELLERS]
+
+
+def test_live_service_keeps_its_ledger_in_sqlite(
+    api: respx.MockRouter, sellers_file: Path, tmp_path: Path
+) -> None:
+    db = tmp_path / "live.db"
+    balance = api.get("/api/v1/balances/current")
+    balance.respond(200, json=[{"currency": "USD", "available_amount": 10_000_000}])
+    build_service(_settings(use_fake_airwallex=False, reserveguard_db_path=db), sellers_file)
+    balance.respond(200, json=[{"currency": "USD", "available_amount": 12_345}])
+
+    build_service(_settings(use_fake_airwallex=False, reserveguard_db_path=db), sellers_file)
+
+    stored = SqliteStore(db).load()
+    assert stored is not None
+    assert stored.opening_balance_cents == 1_000_000_000  # from the first start, not re-read
+    assert dict(stored.accounts) == ACCOUNTS
 
 
 # --- sandbox onboarding of several sellers -------------------------------------------

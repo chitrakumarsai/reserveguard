@@ -12,6 +12,7 @@ Built for the Airwallex Agentic Banking Hackathon (Multi-Tenant Platforms, Kit 8
 |---|---|---|
 | `reserve_engine.py` | Pure Python functions | Reserve rate, fee, payout, shortfall and release maths |
 | `ledger.py` | Immutable in-memory ledger | Per-seller entries and reconciliation checks |
+| `store.py` | SQLite (standard library) | Live mode saves the ledger and all service state after every command, so a restart keeps reserves, pending approvals and settled cycles |
 | `settlement.py` | Service object | Runs settlement cycles and reserve changes through `AirwallexClient` |
 | `airwallex/fake.py` | In-memory fake | Balances, idempotency and insufficient-funds rules for tests and the demo |
 | `airwallex/rest.py` | HTTP client (httpx) | Real Airwallex API: token login, major-unit amounts, `request_id` idempotency with lookup-before-retry, 429 backoff, status polling |
@@ -52,6 +53,23 @@ except `/health` returns 503. Send it as a bearer token:
 ```bash
 curl -H "Authorization: Bearer $RESERVEGUARD_API_TOKEN" http://127.0.0.1:8000/sellers
 ```
+
+### Where state is kept
+
+In live mode (`USE_FAKE_AIRWALLEX=false`) the API saves everything to SQLite at
+`RESERVEGUARD_DB_PATH` (default `data/reserveguard.db`, git-ignored) after every command, in one
+transaction. That covers ledger rows (append-only, queryable with plain SQL), each seller's rate,
+signals, pending approval and memos, settled cycles, payments still pending, and the opening
+platform balance used by reconciliation.
+
+- A restart keeps everything. Replaying a cycle never pays twice, and a pending approval is
+  still waiting.
+- On startup the stored seller-to-account mapping is checked. If `data/sandbox_sellers.json` has
+  changed, the server refuses to start rather than mix sellers' money.
+- To start a fresh ledger, stop the server and delete `data/reserveguard.db*`.
+
+Fake mode stays in memory, and `scripts/demo.py` uses a throwaway database for each run because
+it is a scripted scenario. Run one server process at a time.
 
 ### Ops console
 
