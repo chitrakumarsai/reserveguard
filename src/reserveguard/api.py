@@ -11,27 +11,48 @@ import time
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, NonNegativeInt
 
 from reserveguard.agent.evidence import (
     MAX_EVIDENCE_TEXT,
     EvidenceItem,
     classify_evidence_with_source,
+    load_evidence,
 )
 from reserveguard.airwallex.client import AirwallexError
 from reserveguard.config import Settings, get_settings
 from reserveguard.models import LedgerEntry, ReserveDecision, RiskSignal
 from reserveguard.reserve_engine import AdjustmentPlan
-from reserveguard.scenario import SANDBOX_SELLERS_PATH, build_service
+from reserveguard.scenario import (
+    DELIVERY_CONFIRMATIONS,
+    SAMPLE_EVIDENCE_PATH,
+    SANDBOX_SELLERS_PATH,
+    build_service,
+)
 from reserveguard.settlement import PaymentNotSettledError, SettlementLine, SettlementService
 
 __all__ = ["ASSESS_RATE_LIMIT", "MAX_EVIDENCE_TEXT", "RateLimiter", "app", "create_app"]
 
 MAX_EVIDENCE_ITEMS = 100
+CONSOLE_DIR = Path(__file__).parent / "console"
+# The console page loads only its own script and styles (plus Google Fonts) and talks only
+# to this API; nothing inline, no framing.
+CONSOLE_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' data:; "
+        "style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+}
 # /assess may call Claude, so it is capped per process: this many calls per window.
 ASSESS_RATE_LIMIT = 10
 ASSESS_RATE_WINDOW_S = 60.0
@@ -69,6 +90,17 @@ class AssessOut(BaseModel):
     classifier: str  # "claude" or "keywords" (also used when Claude fails)
 
 
+class InfoOut(BaseModel):
+    airwallex: str  # "sandbox" (live REST client) or "fake"
+    classifier: str  # "claude" or "keywords"
+    llm_model: str | None
+
+
+class SamplesOut(BaseModel):
+    risk: list[EvidenceItem]
+    deliveries: list[EvidenceItem]
+
+
 class ApproveOut(BaseModel):
     decision: ReserveDecision
     plan: AdjustmentPlan
@@ -104,6 +136,7 @@ class PendingOut(BaseModel):
 
 class StatementOut(BaseModel):
     seller_id: str
+    account_id: str  # the seller's Airwallex connected account
     rate_bps: int
     held_cents: int
     debt_cents: int
@@ -196,6 +229,36 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    app.mount("/console/static", StaticFiles(directory=CONSOLE_DIR), name="console-static")
+
+    @app.middleware("http")
+    async def console_headers(request: Request, call_next: Callable[..., Any]) -> Response:
+        response: Response = await call_next(request)
+        if request.url.path.startswith("/console"):
+            response.headers.update(CONSOLE_HEADERS)
+        return response
+
+    @app.get("/console", include_in_schema=False)
+    def console() -> FileResponse:
+        """The ops console. A static page: it holds no data or secrets until the operator
+        enters the API token, and then calls the same authenticated endpoints."""
+        return FileResponse(CONSOLE_DIR / "index.html", media_type="text/html")
+
+    @app.get("/info", response_model=InfoOut, dependencies=Authorized)
+    def info() -> InfoOut:
+        return InfoOut(
+            airwallex="fake" if settings.use_fake_airwallex else "sandbox",
+            classifier="claude" if settings.use_llm else "keywords",
+            llm_model=settings.llm_model if settings.use_llm else None,
+        )
+
+    @app.get("/samples/evidence", response_model=SamplesOut, dependencies=Authorized)
+    def samples() -> SamplesOut:
+        """Demo evidence for seller C: the risk complaints and the later deliveries."""
+        return SamplesOut(
+            risk=load_evidence(SAMPLE_EVIDENCE_PATH), deliveries=list(DELIVERY_CONFIRMATIONS)
+        )
 
     @app.get("/sellers", response_model=list[SellerOut], dependencies=Authorized)
     def sellers(service: ServiceDep) -> list[SellerOut]:
@@ -302,6 +365,7 @@ def create_app(
         totals = view.totals
         return StatementOut(
             seller_id=view.seller_id,
+            account_id=view.account_id,
             rate_bps=view.rate_bps,
             held_cents=totals.held_cents,
             debt_cents=totals.debt_cents,

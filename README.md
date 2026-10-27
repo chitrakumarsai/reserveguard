@@ -53,6 +53,24 @@ except `/health` returns 503. Send it as a bearer token:
 curl -H "Authorization: Bearer $RESERVEGUARD_API_TOKEN" http://127.0.0.1:8000/sellers
 ```
 
+### Ops console
+
+Open **http://127.0.0.1:8000/console** and enter the API token. The token is kept only in that
+browser tab. From the console an operator can:
+
+- run a settlement cycle;
+- paste evidence or load the samples, then assess a seller;
+- see **why** the rate is what it is: the tier base, each signal with its evidence, cleared
+  signals, and the 40% cap;
+- review the pending charge or release before anything moves (amount, from/to account, seller
+  wallet, memo), then approve it in two clicks;
+- read each seller's own ledger with its Airwallex payment ids, and watch the reconciliation
+  checks.
+
+The page is static HTML, CSS and JS with no build step. It uses the same authenticated
+endpoints (`/sellers/{id}/explain`, `/sellers/{id}/pending`, `/sellers/{id}/statement`). It is
+served with a strict Content-Security-Policy and writes every value as text, never as HTML.
+
 
 ## Developing with Claude Code + ECC
 

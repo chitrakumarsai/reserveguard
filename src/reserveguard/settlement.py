@@ -91,6 +91,7 @@ class SellerStatement:
     """One seller's own view: its ledger lines only, plus its live wallet."""
 
     seller_id: str
+    account_id: str
     rate_bps: int
     totals: SellerTotals
     entries: tuple[LedgerEntry, ...]
@@ -176,6 +177,7 @@ class SettlementService:
             seller = state.seller
             return SellerStatement(
                 seller_id=seller_id,
+                account_id=seller.account_id,
                 rate_bps=state.rate_bps,
                 totals=self._ledger.totals(seller_id),
                 entries=tuple(e for e in self._ledger.entries if e.seller_id == seller_id),

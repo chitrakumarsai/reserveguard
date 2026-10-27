@@ -68,6 +68,7 @@ def test_statement_is_the_sellers_own_view(client: TestClient) -> None:
     body = _get(client, "/sellers/A/statement")
 
     assert body["seller_id"] == "A"
+    assert body["account_id"] == "acct_seller_a"
     assert body["held_cents"] == 15_000
     assert body["paid_out_cents"] == 255_000
     assert {e["kind"] for e in body["entries"]} >= {"gross", "fee", "reserve_hold", "payout"}

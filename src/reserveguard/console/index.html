@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReserveGuard Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="/console/static/console.css" />
+    <script src="/console/static/console.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2 3 6v6c0 5 3.8 9.3 9 10 5.2-.7 9-5 9-10V6l-9-4Z" />
+          <path class="brand-mark-line" d="M7 13h10M7 9.5h10M7 16.5h6" />
+        </svg>
+        <span class="brand-name">ReserveGuard</span>
+        <span class="brand-sub">Seller reserves on Airwallex</span>
+      </div>
+      <div class="topbar-meta">
+        <span class="chip" id="env-airwallex" data-tone="muted">Airwallex: —</span>
+        <span class="chip" id="env-classifier" data-tone="muted">Classifier: —</span>
+        <button class="btn btn-ghost" id="settle-open" type="button">Run settlement cycle</button>
+        <button class="btn btn-ghost" id="lock" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel sellers" aria-labelledby="sellers-heading">
+        <h2 id="sellers-heading" class="panel-title">Sellers</h2>
+        <ul id="seller-list" class="seller-list" aria-live="polite"></ul>
+        <p class="footnote">Each seller has its own Airwallex connected account. No seller's funds
+          are ever used for another.</p>
+      </section>
+
+      <section class="workspace" aria-labelledby="seller-name">
+        <header class="seller-head">
+          <div>
+            <h1 id="seller-name">Select a seller</h1>
+            <p class="seller-sub"><span id="seller-tier" class="chip" data-tone="muted">—</span>
+              <code id="seller-account" class="mono"></code></p>
+          </div>
+        </header>
+
+        <dl class="kpis">
+          <div class="kpi"><dt>Reserve rate</dt><dd id="kpi-rate" class="mono">—</dd></div>
+          <div class="kpi"><dt>Held in reserve</dt><dd id="kpi-held" class="mono">—</dd></div>
+          <div class="kpi"><dt>Seller wallet</dt><dd id="kpi-wallet" class="mono">—</dd></div>
+          <div class="kpi"><dt>Debt</dt><dd id="kpi-debt" class="mono">—</dd></div>
+        </dl>
+
+        <section class="block" aria-labelledby="why-heading">
+          <div class="block-head">
+            <h2 id="why-heading">Why this rate</h2>
+            <span id="rate-note" class="block-note"></span>
+          </div>
+          <div id="rate-stack" class="rate-stack" role="img" aria-label="Rate breakdown"></div>
+          <div class="rate-scale" aria-hidden="true"><span>0%</span><span>Cap 40%</span></div>
+          <ol id="rate-lines" class="rate-lines"></ol>
+        </section>
+
+        <section id="approval" class="block slip" aria-labelledby="slip-heading" hidden>
+          <div class="block-head">
+            <h2 id="slip-heading">Waiting for your approval</h2>
+            <span class="chip" data-tone="warn">Nothing has moved yet</span>
+          </div>
+          <div class="slip-body">
+            <div class="slip-amount">
+              <span id="slip-action" class="slip-action">—</span>
+              <strong id="slip-value" class="mono">—</strong>
+            </div>
+            <dl class="slip-route">
+              <div><dt>From</dt><dd id="slip-from" class="mono">—</dd></div>
+              <div><dt>To</dt><dd id="slip-to" class="mono">—</dd></div>
+              <div><dt>Seller wallet now</dt><dd id="slip-wallet" class="mono">—</dd></div>
+              <div><dt>Reserve target</dt><dd id="slip-target" class="mono">—</dd></div>
+            </dl>
+            <p id="slip-memo" class="slip-memo"></p>
+          </div>
+          <div class="slip-actions">
+            <button id="approve" class="btn btn-primary" type="button">Approve</button>
+            <span id="approve-hint" class="block-note"></span>
+          </div>
+        </section>
+
+        <section class="block" aria-labelledby="evidence-heading">
+          <div class="block-head">
+            <h2 id="evidence-heading">New evidence</h2>
+            <div class="block-tools">
+              <button class="btn btn-small" id="load-risk" type="button">Sample: complaints</button>
+              <button class="btn btn-small" id="load-deliveries" type="button">Sample: deliveries</button>
+            </div>
+          </div>
+          <label class="sr-only" for="evidence-input">Evidence as JSON</label>
+          <textarea id="evidence-input" class="evidence-input mono" spellcheck="false" rows="7"
+            placeholder='[{"id": "ev-1", "source": "support", "timestamp": "2026-10-27T10:00:00Z", "text": "Item never arrived"}]'></textarea>
+          <div class="block-foot">
+            <p class="block-note">Claude only names the risk signals and cites evidence. The weights,
+              the rate and every amount come from fixed rules.</p>
+            <button id="assess" class="btn btn-primary" type="button">Assess seller</button>
+          </div>
+        </section>
+
+        <section class="block" aria-labelledby="ledger-heading">
+          <div class="block-head"><h2 id="ledger-heading">Ledger</h2></div>
+          <div class="table-wrap">
+            <table class="ledger">
+              <thead><tr><th scope="col">Entry</th><th scope="col" class="num">Amount</th>
+                <th scope="col" class="ref">Reference</th><th scope="col">Airwallex payment</th></tr></thead>
+              <tbody id="ledger-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel checks" aria-labelledby="checks-heading">
+        <div class="block-head">
+          <h2 id="checks-heading" class="panel-title">Reconciliation</h2>
+          <span id="checks-summary" class="chip" data-tone="muted">—</span>
+        </div>
+        <ul id="check-list" class="check-list"></ul>
+        <button class="btn btn-small" id="refresh-checks" type="button">Re-run checks</button>
+      </section>
+    </main>
+
+    <dialog id="token-dialog" class="dialog">
+      <form id="token-form" method="dialog">
+        <h2>Connect to ReserveGuard</h2>
+        <p class="block-note">Enter the API token (RESERVEGUARD_API_TOKEN). It stays in this tab
+          only and is cleared when you close it.</p>
+        <label for="token-input">API token</label>
+        <input id="token-input" type="password" autocomplete="off" required minlength="8" />
+        <p id="token-error" class="form-error" role="alert"></p>
+        <div class="dialog-actions"><button class="btn btn-primary" type="submit">Connect</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="settle-dialog" class="dialog">
+      <form id="settle-form" method="dialog">
+        <h2>Run a settlement cycle</h2>
+        <p class="block-note">Gross sales collected per seller. ReserveGuard takes the 10% fee,
+          holds each seller's reserve, and pays the rest to their Airwallex account.</p>
+        <div id="settle-fields" class="settle-fields"></div>
+        <div class="dialog-actions">
+          <button class="btn btn-ghost" value="cancel" type="button" id="settle-cancel">Cancel</button>
+          <button class="btn btn-primary" type="submit">Pay out</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>
