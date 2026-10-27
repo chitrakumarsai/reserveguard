@@ -13,10 +13,15 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, NonNegativeInt
 
+from reserveguard.agent.evidence import EvidenceItem, classify_evidence
 from reserveguard.airwallex.client import AirwallexError
 from reserveguard.config import Settings, get_settings
+from reserveguard.models import ReserveDecision, RiskSignal
+from reserveguard.reserve_engine import AdjustmentPlan
 from reserveguard.scenario import SANDBOX_SELLERS_PATH, build_service
 from reserveguard.settlement import SettlementLine, SettlementService
+
+MAX_EVIDENCE_ITEMS = 100
 
 
 class SettleRequest(BaseModel):
@@ -37,6 +42,23 @@ class CheckOut(BaseModel):
     name: str
     passed: bool
     detail: str
+
+
+class AssessRequest(BaseModel):
+    evidence: list[EvidenceItem] = Field(min_length=1, max_length=MAX_EVIDENCE_ITEMS)
+
+
+class AssessOut(BaseModel):
+    decision: ReserveDecision
+    signals: list[RiskSignal]
+    # Set when the change was applied at once; None while it waits for /approve.
+    memo: str | None
+
+
+class ApproveOut(BaseModel):
+    decision: ReserveDecision
+    plan: AdjustmentPlan
+    memo: str
 
 
 def get_service(request: Request) -> SettlementService:
@@ -103,6 +125,31 @@ def create_app(
             raise HTTPException(status_code=404, detail="unknown seller") from exc
         except AirwallexError as exc:
             raise HTTPException(status_code=502, detail="payment provider error") from exc
+
+    @app.post("/sellers/{seller_id}/assess", response_model=AssessOut, dependencies=Authorized)
+    def assess(seller_id: str, body: AssessRequest, service: ServiceDep) -> AssessOut:
+        """Re-rate ONE seller. The LLM only names signals; weights and amounts are fixed."""
+        signals = classify_evidence(body.evidence, settings)
+        try:
+            decision = service.assess(seller_id, signals)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown seller") from exc
+        except AirwallexError as exc:
+            raise HTTPException(status_code=502, detail="payment provider error") from exc
+        memo = None if decision.needs_approval else service.memos(seller_id)[-1]
+        return AssessOut(decision=decision, signals=signals, memo=memo)
+
+    @app.post("/sellers/{seller_id}/approve", response_model=ApproveOut, dependencies=Authorized)
+    def approve(seller_id: str, service: ServiceDep) -> ApproveOut:
+        try:
+            result = service.approve(seller_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown seller") from exc
+        except LookupError as exc:
+            raise HTTPException(status_code=409, detail="no pending decision") from exc
+        except AirwallexError as exc:
+            raise HTTPException(status_code=502, detail="payment provider error") from exc
+        return ApproveOut(decision=result.decision, plan=result.plan, memo=result.memo)
 
     @app.get("/reconciliation", response_model=list[CheckOut], dependencies=Authorized)
     def reconciliation(service: ServiceDep) -> list[CheckOut]:

@@ -18,7 +18,7 @@ Built for the Airwallex Agentic Banking Hackathon (Multi-Tenant Platforms, Kit 8
 | `airwallex/sandbox.py` | Setup helpers (sandbox only) | Global account and deposit funding, seller onboarding (create → submit → ACTIVE), platform reports |
 | `agent/evidence.py` | Keyword rule, or Claude behind `USE_LLM` | Turns evidence into risk signals that cite evidence ids |
 | `agent/tools.py` | Read-only helpers | Seller views and memo drafting for the LLM. Never moves money |
-| `api.py` | FastAPI app | `/health`, `/sellers`, `/settle`, `/reconciliation`; bearer token on all but `/health`; fake or real client per `USE_FAKE_AIRWALLEX` |
+| `api.py` | FastAPI app | `/health`, `/sellers`, `/settle`, `/sellers/{id}/assess` (evidence in, re-rate out), `/sellers/{id}/approve`, `/reconciliation`; bearer token on all but `/health`; fake or real client per `USE_FAKE_AIRWALLEX` |
 
 The LLM never sets amounts and never holds Airwallex keys. Every number comes from deterministic code.
 
