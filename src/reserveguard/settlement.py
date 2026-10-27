@@ -14,7 +14,7 @@ from reserveguard.airwallex.client import (
     AirwallexError,
     AirwallexTransientError,
 )
-from reserveguard.ledger import Ledger, run_checks
+from reserveguard.ledger import Ledger, SellerTotals, run_checks
 from reserveguard.models import (
     CheckResult,
     EntryKind,
@@ -25,7 +25,9 @@ from reserveguard.models import (
 )
 from reserveguard.reserve_engine import (
     AdjustmentPlan,
+    RateExplanation,
     base_rate_bps,
+    explain_rate,
     plan_adjustment,
     propose_reserve_change,
     settle_gross,
@@ -71,6 +73,28 @@ class AdjustmentResult:
     decision: ReserveDecision
     plan: AdjustmentPlan
     memo: str
+
+
+@dataclass(frozen=True)
+class AdjustmentPreview:
+    """What approve() would do now, before anything moves."""
+
+    decision: ReserveDecision
+    plan: AdjustmentPlan
+    account_id: str
+    wallet_cents: int
+    memo: str
+
+
+@dataclass(frozen=True)
+class SellerStatement:
+    """One seller's own view: its ledger lines only, plus its live wallet."""
+
+    seller_id: str
+    rate_bps: int
+    totals: SellerTotals
+    entries: tuple[LedgerEntry, ...]
+    wallet_cents: int
 
 
 @dataclass(frozen=True)
@@ -121,6 +145,42 @@ class SettlementService:
 
     def memos(self, seller_id: str) -> tuple[str, ...]:
         return self._state(seller_id).memos
+
+    def explain(self, seller_id: str) -> RateExplanation:
+        """Why the evidence on file gives this rate (the pending one, if awaiting approval)."""
+        with self._lock:
+            state = self._state(seller_id)
+            return explain_rate(state.seller.tier, state.signals)
+
+    def pending(self, seller_id: str) -> ReserveDecision | None:
+        return self._state(seller_id).pending
+
+    def preview(self, seller_id: str) -> AdjustmentPreview:
+        """Plan the pending decision against the seller's live balance. Moves no money."""
+        with self._lock:
+            state = self._state(seller_id)
+            if state.pending is None:
+                raise LookupError(f"no pending reserve decision for seller {seller_id}")
+            plan, wallet = self._plan(state.pending)
+            return AdjustmentPreview(
+                decision=state.pending,
+                plan=plan,
+                account_id=state.seller.account_id,
+                wallet_cents=wallet,
+                memo=draft_memo(state.pending),
+            )
+
+    def statement(self, seller_id: str) -> SellerStatement:
+        with self._lock:
+            state = self._state(seller_id)
+            seller = state.seller
+            return SellerStatement(
+                seller_id=seller_id,
+                rate_bps=state.rate_bps,
+                totals=self._ledger.totals(seller_id),
+                entries=tuple(e for e in self._ledger.entries if e.seller_id == seller_id),
+                wallet_cents=self._client.get_balance(seller.account_id, seller.currency),
+            )
 
     def reconciliation(self) -> list[CheckResult]:
         """The platform holds this cycle's gross as collected, then pays out of it, so its
@@ -249,18 +309,7 @@ class SettlementService:
         state = self._state(decision.seller_id)
         seller = state.seller
         totals = self._ledger.totals(seller.seller_id)
-        # Only THIS seller's balance is read; no other tenant's funds are considered.
-        balance = (
-            self._client.get_balance(seller.account_id, seller.currency)
-            if decision.target_reserve_cents > totals.held_cents
-            else 0
-        )
-        plan = plan_adjustment(
-            target_cents=decision.target_reserve_cents,
-            held_cents=totals.held_cents,
-            seller_balance_cents=balance,
-            existing_debt_cents=totals.debt_cents,
-        )
+        plan, _ = self._plan(decision)
         ref = f"reserve:{seller.seller_id}"
         charge_id = release_id = None
         if plan.charge_cents > 0:
@@ -295,6 +344,22 @@ class SettlementService:
         for object_id in (charge_id, release_id):
             self._raise_if_pending(object_id)
         return AdjustmentResult(decision=decision, plan=plan, memo=memo)
+
+    def _plan(self, decision: ReserveDecision) -> tuple[AdjustmentPlan, int]:
+        """The adjustment for ``decision`` and the seller wallet it was sized against."""
+        seller = self._state(decision.seller_id).seller
+        totals = self._ledger.totals(seller.seller_id)
+        # Only THIS seller's balance is read; no other tenant's funds are considered.
+        balance = self._client.get_balance(seller.account_id, seller.currency)
+        plan = plan_adjustment(
+            target_cents=decision.target_reserve_cents,
+            held_cents=totals.held_cents,
+            seller_balance_cents=balance
+            if decision.target_reserve_cents > totals.held_cents
+            else 0,
+            existing_debt_cents=totals.debt_cents,
+        )
+        return plan, balance
 
     def _start_deadline(self) -> None:
         self._deadline = self._clock() + PAYMENT_WAIT_BUDGET_S

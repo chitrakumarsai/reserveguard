@@ -24,7 +24,7 @@ from reserveguard.agent.evidence import (
 )
 from reserveguard.airwallex.client import AirwallexError
 from reserveguard.config import Settings, get_settings
-from reserveguard.models import ReserveDecision, RiskSignal
+from reserveguard.models import LedgerEntry, ReserveDecision, RiskSignal
 from reserveguard.reserve_engine import AdjustmentPlan
 from reserveguard.scenario import SANDBOX_SELLERS_PATH, build_service
 from reserveguard.settlement import PaymentNotSettledError, SettlementLine, SettlementService
@@ -73,6 +73,45 @@ class ApproveOut(BaseModel):
     decision: ReserveDecision
     plan: AdjustmentPlan
     memo: str
+
+
+class RateLineOut(BaseModel):
+    kind: str
+    weight_bps: int
+    evidence_ids: list[str]
+    summary: str
+    status: str
+    cleared_by: list[str]
+
+
+class ExplainOut(BaseModel):
+    current_rate_bps: int
+    pending: bool  # the breakdown below is the rate awaiting /approve
+    base_bps: int
+    lines: list[RateLineOut]
+    uncapped_bps: int
+    rate_bps: int
+    capped: bool
+
+
+class PendingOut(BaseModel):
+    decision: ReserveDecision
+    plan: AdjustmentPlan
+    account_id: str
+    wallet_cents: int
+    memo: str
+
+
+class StatementOut(BaseModel):
+    seller_id: str
+    rate_bps: int
+    held_cents: int
+    debt_cents: int
+    paid_out_cents: int
+    charged_cents: int
+    released_cents: int
+    wallet_cents: int
+    entries: list[LedgerEntry]
 
 
 def get_service(request: Request) -> SettlementService:
@@ -208,6 +247,70 @@ def create_app(
         except AirwallexError as exc:
             raise provider_failure(exc) from exc
         return ApproveOut(decision=result.decision, plan=result.plan, memo=result.memo)
+
+    @app.get("/sellers/{seller_id}/explain", response_model=ExplainOut, dependencies=Authorized)
+    def explain(seller_id: str, service: ServiceDep) -> ExplainOut:
+        """Why the rate is what it is: tier base plus each signal, cleared ones shown."""
+        require_sellers(service, seller_id)
+        why = service.explain(seller_id)
+        return ExplainOut(
+            current_rate_bps=service.current_rate_bps(seller_id),
+            pending=service.pending(seller_id) is not None,
+            base_bps=why.base_bps,
+            lines=[
+                RateLineOut(
+                    kind=line.kind.value,
+                    weight_bps=line.weight_bps,
+                    evidence_ids=list(line.evidence_ids),
+                    summary=line.summary,
+                    status=line.status,
+                    cleared_by=list(line.cleared_by),
+                )
+                for line in why.lines
+            ],
+            uncapped_bps=why.uncapped_bps,
+            rate_bps=why.rate_bps,
+            capped=why.capped,
+        )
+
+    @app.get("/sellers/{seller_id}/pending", response_model=PendingOut, dependencies=Authorized)
+    def pending(seller_id: str, service: ServiceDep) -> PendingOut:
+        """What /approve would do right now. Reads the seller's wallet; moves nothing."""
+        require_sellers(service, seller_id)
+        try:
+            preview = service.preview(seller_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="no pending decision") from exc
+        except AirwallexError as exc:
+            raise provider_failure(exc) from exc
+        return PendingOut(
+            decision=preview.decision,
+            plan=preview.plan,
+            account_id=preview.account_id,
+            wallet_cents=preview.wallet_cents,
+            memo=preview.memo,
+        )
+
+    @app.get("/sellers/{seller_id}/statement", response_model=StatementOut, dependencies=Authorized)
+    def statement(seller_id: str, service: ServiceDep) -> StatementOut:
+        """One seller's own view: only its ledger lines and its live wallet."""
+        require_sellers(service, seller_id)
+        try:
+            view = service.statement(seller_id)
+        except AirwallexError as exc:
+            raise provider_failure(exc) from exc
+        totals = view.totals
+        return StatementOut(
+            seller_id=view.seller_id,
+            rate_bps=view.rate_bps,
+            held_cents=totals.held_cents,
+            debt_cents=totals.debt_cents,
+            paid_out_cents=totals.payouts_cents,
+            charged_cents=totals.charges_cents,
+            released_cents=totals.released_cents,
+            wallet_cents=view.wallet_cents,
+            entries=list(view.entries),
+        )
 
     @app.get("/reconciliation", response_model=list[CheckOut], dependencies=Authorized)
     def reconciliation(service: ServiceDep) -> list[CheckOut]:

@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from reserveguard.models import ReserveDecision, RiskSignal, Tier
+from reserveguard.models import ReserveDecision, RiskKind, RiskSignal, Tier
 
 BPS_DENOMINATOR = 10_000
 PLATFORM_FEE_BPS = 1_000
@@ -43,22 +43,69 @@ def base_rate_bps(tier: Tier) -> int:
     return _BASE_RATES_BPS[tier]
 
 
-def compute_rate_bps(tier: Tier, signals: Sequence[RiskSignal]) -> int:
-    """Base tier rate plus active signal weights, capped at MAX_RATE_BPS.
+@dataclass(frozen=True)
+class RateLine:
+    """One signal's part in the rate. ``status``: "active" (counted), "cleared" (its points
+    were removed by a later signal) or "clears" (it removes an earlier signal's points)."""
+
+    kind: RiskKind
+    weight_bps: int
+    evidence_ids: tuple[str, ...]
+    summary: str
+    status: str
+    cleared_by: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RateExplanation:
+    base_bps: int
+    lines: tuple[RateLine, ...]
+    uncapped_bps: int
+    rate_bps: int
+
+    @property
+    def capped(self) -> bool:
+        return self.rate_bps < self.uncapped_bps
+
+
+def explain_rate(tier: Tier, signals: Sequence[RiskSignal]) -> RateExplanation:
+    """Base tier rate plus active signal weights, capped at MAX_RATE_BPS, line by line.
 
     A signal with ``clears`` set removes the points of the first not-yet-cleared
     EARLIER signal of that kind; it adds its own weight as well (usually 0).
     """
-    cleared: set[int] = set()
+    cleared_by: dict[int, tuple[str, ...]] = {}
     for position, signal in enumerate(signals):
         if signal.clears is None:
             continue
         for index, target in enumerate(signals[:position]):
-            if index not in cleared and target.kind == signal.clears and target.clears is None:
-                cleared.add(index)
+            if index not in cleared_by and target.kind == signal.clears and target.clears is None:
+                cleared_by[index] = signal.evidence_ids
                 break
-    added = sum(s.weight_bps for i, s in enumerate(signals) if i not in cleared)
-    return min(base_rate_bps(tier) + added, MAX_RATE_BPS)
+    lines = tuple(
+        RateLine(
+            kind=s.kind,
+            weight_bps=s.weight_bps,
+            evidence_ids=s.evidence_ids,
+            summary=s.summary,
+            status="cleared" if i in cleared_by else "clears" if s.clears else "active",
+            cleared_by=cleared_by.get(i, ()),
+        )
+        for i, s in enumerate(signals)
+    )
+    uncapped = base_rate_bps(tier) + sum(
+        line.weight_bps for line in lines if line.status != "cleared"
+    )
+    return RateExplanation(
+        base_bps=base_rate_bps(tier),
+        lines=lines,
+        uncapped_bps=uncapped,
+        rate_bps=min(uncapped, MAX_RATE_BPS),
+    )
+
+
+def compute_rate_bps(tier: Tier, signals: Sequence[RiskSignal]) -> int:
+    return explain_rate(tier, signals).rate_bps
 
 
 def _apply_bps(cents: int, rate_bps: int) -> int:
