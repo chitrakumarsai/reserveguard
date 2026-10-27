@@ -6,6 +6,9 @@ real (sandbox) money for the sellers in data/sandbox_sellers.json. Every endpoin
 """
 
 import secrets
+import threading
+import time
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
@@ -14,16 +17,24 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, NonNegativeInt
 
-from reserveguard.agent.evidence import EvidenceItem, classify_evidence
-from reserveguard.airwallex.client import AirwallexClient, AirwallexError, TransferStatus
-from reserveguard.airwallex.rest import RestAirwallexClient
+from reserveguard.agent.evidence import (
+    MAX_EVIDENCE_TEXT,
+    EvidenceItem,
+    classify_evidence_with_source,
+)
+from reserveguard.airwallex.client import AirwallexError
 from reserveguard.config import Settings, get_settings
 from reserveguard.models import ReserveDecision, RiskSignal
 from reserveguard.reserve_engine import AdjustmentPlan
 from reserveguard.scenario import SANDBOX_SELLERS_PATH, build_service
-from reserveguard.settlement import SettlementLine, SettlementService
+from reserveguard.settlement import PaymentNotSettledError, SettlementLine, SettlementService
+
+__all__ = ["ASSESS_RATE_LIMIT", "MAX_EVIDENCE_TEXT", "RateLimiter", "app", "create_app"]
 
 MAX_EVIDENCE_ITEMS = 100
+# /assess may call Claude, so it is capped per process: this many calls per window.
+ASSESS_RATE_LIMIT = 10
+ASSESS_RATE_WINDOW_S = 60.0
 
 
 class SettleRequest(BaseModel):
@@ -55,6 +66,7 @@ class AssessOut(BaseModel):
     signals: list[RiskSignal]
     # Set when the change was applied at once; None while it waits for /approve.
     memo: str | None
+    classifier: str  # "claude" or "keywords" (also used when Claude fails)
 
 
 class ApproveOut(BaseModel):
@@ -90,20 +102,47 @@ def require_token(
 Authorized = [Depends(require_token)]
 
 
-def settlement_waiter(client: AirwallexClient) -> Callable[[str], TransferStatus]:
-    """Live: poll Airwallex until the payment is final. Fake: payments are final at once."""
-    if isinstance(client, RestAirwallexClient):
-        return client.wait_for_settlement
-    return client.get_status
+class RateLimiter:
+    """Sliding-window limit on calls, shared by every caller of this process."""
+
+    def __init__(
+        self, limit: int, window_s: float, clock: Callable[[], float] = time.monotonic
+    ) -> None:
+        self._limit = limit
+        self._window_s = window_s
+        self._clock = clock
+        self._calls: deque[float] = deque()
+        self._lock = threading.Lock()
+
+    def check(self) -> None:
+        with self._lock:
+            now = self._clock()
+            while self._calls and now - self._calls[0] >= self._window_s:
+                self._calls.popleft()
+            if len(self._calls) >= self._limit:
+                raise HTTPException(status_code=429, detail="too many assessments; retry later")
+            self._calls.append(now)
 
 
-def await_new_payments(request: Request, service: SettlementService, since: int) -> None:
-    """Block until every payment recorded after ledger entry ``since`` has SETTLED, so a
-    reconciliation right after this request sees the money where the ledger says it is."""
-    wait: Callable[[str], str] = request.app.state.await_settlement
-    for entry in service.ledger.entries[since:]:
-        if entry.object_id is not None and wait(entry.object_id) != "SETTLED":
-            raise HTTPException(status_code=502, detail="payment did not settle")
+def require_sellers(service: SettlementService, *seller_ids: str) -> None:
+    known = {s.seller_id for s in service.sellers}
+    if any(seller_id not in known for seller_id in seller_ids):
+        raise HTTPException(status_code=404, detail="unknown seller")
+
+
+def provider_failure(exc: AirwallexError) -> HTTPException:
+    """502 that tells the caller whether money moved, so it knows if a retry is safe."""
+    if isinstance(exc, PaymentNotSettledError):
+        return HTTPException(
+            status_code=502,
+            detail={
+                "error": "payment_not_settled",
+                "payment_id": exc.payment_id,
+                "status": exc.status,
+                "ledger_applied": exc.ledger_applied,
+            },
+        )
+    return HTTPException(status_code=502, detail="payment provider error")
 
 
 def create_app(
@@ -111,8 +150,8 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="ReserveGuard")
-    app.state.service, client = build_service(settings, sellers_path)
-    app.state.await_settlement = settlement_waiter(client)
+    app.state.service, _ = build_service(settings, sellers_path)
+    assess_limit = RateLimiter(ASSESS_RATE_LIMIT, ASSESS_RATE_WINDOW_S)
     app.state.api_token = settings.reserveguard_api_token.get_secret_value()
 
     @app.get("/health")
@@ -137,46 +176,37 @@ def create_app(
         return out
 
     @app.post("/settle", response_model=list[SettlementLine], dependencies=Authorized)
-    def settle(body: SettleRequest, service: ServiceDep, request: Request) -> list[SettlementLine]:
-        since = len(service.ledger.entries)
+    def settle(body: SettleRequest, service: ServiceDep) -> list[SettlementLine]:
+        """Returns once every payout of the cycle has SETTLED; replaying the cycle re-checks
+        payouts that were still pending and never pays a seller twice."""
+        require_sellers(service, *body.gross_cents)
         try:
-            lines = service.settle_cycle(body.gross_cents, cycle_id=body.cycle_id)
-            await_new_payments(request, service, since)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="unknown seller") from exc
+            return service.settle_cycle(body.gross_cents, cycle_id=body.cycle_id)
         except AirwallexError as exc:
-            raise HTTPException(status_code=502, detail="payment provider error") from exc
-        return lines
+            raise provider_failure(exc) from exc
 
     @app.post("/sellers/{seller_id}/assess", response_model=AssessOut, dependencies=Authorized)
-    def assess(
-        seller_id: str, body: AssessRequest, service: ServiceDep, request: Request
-    ) -> AssessOut:
-        """Re-rate ONE seller. The LLM only names signals; weights and amounts are fixed."""
-        signals = classify_evidence(body.evidence, settings)
-        since = len(service.ledger.entries)
+    def assess(seller_id: str, body: AssessRequest, service: ServiceDep) -> AssessOut:
+        """Re-rate ONE seller. The LLM only names signals; weights and amounts are fixed.
+        Evidence alone never releases money: any decrease also waits for /approve."""
+        require_sellers(service, seller_id)
+        assess_limit.check()
+        signals, classifier = classify_evidence_with_source(body.evidence, settings)
         try:
-            decision = service.assess(seller_id, signals)
-            await_new_payments(request, service, since)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="unknown seller") from exc
+            decision, memo = service.assess_detailed(seller_id, signals, hold_releases=True)
         except AirwallexError as exc:
-            raise HTTPException(status_code=502, detail="payment provider error") from exc
-        memo = None if decision.needs_approval else service.memos(seller_id)[-1]
-        return AssessOut(decision=decision, signals=signals, memo=memo)
+            raise provider_failure(exc) from exc
+        return AssessOut(decision=decision, signals=signals, memo=memo, classifier=classifier)
 
     @app.post("/sellers/{seller_id}/approve", response_model=ApproveOut, dependencies=Authorized)
-    def approve(seller_id: str, service: ServiceDep, request: Request) -> ApproveOut:
-        since = len(service.ledger.entries)
+    def approve(seller_id: str, service: ServiceDep) -> ApproveOut:
+        require_sellers(service, seller_id)
         try:
             result = service.approve(seller_id)
-            await_new_payments(request, service, since)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="unknown seller") from exc
         except LookupError as exc:
             raise HTTPException(status_code=409, detail="no pending decision") from exc
         except AirwallexError as exc:
-            raise HTTPException(status_code=502, detail="payment provider error") from exc
+            raise provider_failure(exc) from exc
         return ApproveOut(decision=result.decision, plan=result.plan, memo=result.memo)
 
     @app.get("/reconciliation", response_model=list[CheckOut], dependencies=Authorized)

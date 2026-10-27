@@ -12,7 +12,7 @@ from reserveguard.airwallex.rest import RestAirwallexClient
 from reserveguard.airwallex.sandbox import ConnectedAccountSpec, SandboxAdmin
 from reserveguard.config import Settings
 from reserveguard.models import Seller, Tier
-from reserveguard.settlement import SettlementService
+from reserveguard.settlement import PaymentWaiter, SettlementService
 
 _DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 SAMPLE_EVIDENCE_PATH = _DATA_DIR / "samples" / "evidence_seller_c.json"
@@ -52,7 +52,15 @@ def build_service(
     accounts = load_seller_accounts(sellers_path)
     sellers = tuple(replace(s, account_id=accounts[s.seller_id]) for s in DEMO_SELLERS)
     client = RestAirwallexClient(settings)
-    return SettlementService(client, sellers), client
+    return SettlementService(client, sellers, await_payment=payment_waiter(client)), client
+
+
+def payment_waiter(client: AirwallexClient) -> PaymentWaiter:
+    """Live: poll Airwallex until final or the time left runs out. Fake: final at once."""
+    if isinstance(client, RestAirwallexClient):
+        live = client
+        return lambda object_id, left: live.wait_for_settlement(object_id, timeout_s=left)
+    return lambda object_id, _left: client.get_status(object_id)
 
 
 def demo_seller_specs(stamp: str) -> dict[str, ConnectedAccountSpec]:

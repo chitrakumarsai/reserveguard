@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 import anthropic
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from reserveguard.config import Settings, get_settings
 from reserveguard.models import RiskKind, RiskSignal
@@ -39,13 +39,18 @@ _SYSTEM_PROMPT = (
 )
 
 
+# Caps on caller-supplied evidence, which is sent to Claude when USE_LLM is on.
+MAX_EVIDENCE_ID = 64
+MAX_EVIDENCE_TEXT = 2000
+
+
 class EvidenceItem(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    id: str
-    source: str
+    id: str = Field(min_length=1, max_length=MAX_EVIDENCE_ID)
+    source: str = Field(min_length=1, max_length=MAX_EVIDENCE_ID)
     timestamp: datetime
-    text: str
+    text: str = Field(max_length=MAX_EVIDENCE_TEXT)
 
 
 class _LLMSignal(BaseModel):
@@ -144,11 +149,18 @@ def classify_with_llm(items: Sequence[EvidenceItem], settings: Settings) -> list
 def classify_evidence(
     items: Sequence[EvidenceItem], settings: Settings | None = None
 ) -> list[RiskSignal]:
+    return classify_evidence_with_source(items, settings)[0]
+
+
+def classify_evidence_with_source(
+    items: Sequence[EvidenceItem], settings: Settings | None = None
+) -> tuple[list[RiskSignal], str]:
+    """Signals plus which classifier produced them: "claude" or "keywords"."""
     settings = settings or get_settings()
     if not settings.use_llm:
-        return classify_with_keywords(items)
+        return classify_with_keywords(items), "keywords"
     try:
-        return classify_with_llm(items, settings)
+        return classify_with_llm(items, settings), "claude"
     except Exception:
         logger.exception("LLM evidence classification failed; using keyword rule")
-        return classify_with_keywords(items)
+        return classify_with_keywords(items), "keywords"
