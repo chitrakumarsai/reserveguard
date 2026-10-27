@@ -53,6 +53,7 @@ function toast(message, tone = "info") {
 
 // ---------- API ----------
 class ApiError extends Error {}
+class SignedOutError extends ApiError {}
 
 function describeError(status, body) {
   const detail = body && body.detail;
@@ -73,7 +74,7 @@ async function api(path, options = {}) {
   const body = await response.json().catch(() => null);
   if (response.status === 401) {
     signOut("Your token was not accepted.");
-    throw new ApiError("Not signed in");
+    throw new SignedOutError("Not signed in");
   }
   if (!response.ok) throw new ApiError(describeError(response.status, body));
   return body;
@@ -387,7 +388,7 @@ async function busy(button, label, work) {
   try {
     await work();
   } catch (error) {
-    if (!(error instanceof ApiError && error.message === "Not signed in")) toast(error.message, "bad");
+    if (!(error instanceof SignedOutError)) toast(error.message, "bad");
   } finally {
     button.disabled = false;
     if (button.textContent === label) button.textContent = original;
@@ -404,7 +405,7 @@ function wire() {
       $("token-dialog").close();
     } catch (error) {
       // A rejected token already set its own message in signOut(); keep that one.
-      if (error.message !== "Not signed in") $("token-error").textContent = error.message;
+      if (!(error instanceof SignedOutError)) $("token-error").textContent = error.message;
       if (!$("token-dialog").open) $("token-dialog").showModal();
     }
   });
