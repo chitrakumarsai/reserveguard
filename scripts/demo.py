@@ -6,16 +6,26 @@ sellers onboarded by scripts/sandbox_setup.py (moves sandbox money).
 
 import argparse
 import sys
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
+
+import httpx
 
 from reserveguard.agent.evidence import classify_evidence, load_evidence
 from reserveguard.agent.tools import format_pct, format_usd
-from reserveguard.airwallex.client import AirwallexClient
+from reserveguard.airwallex.client import AirwallexClient, AirwallexError
 from reserveguard.airwallex.fake import FakeAirwallexClient
-from reserveguard.airwallex.rest import RestAirwallexClient
+from reserveguard.airwallex.rest import API, RestAirwallexClient
+from reserveguard.airwallex.sandbox import SandboxAdmin
 from reserveguard.config import Settings
 from reserveguard.ledger import SellerTotals
 from reserveguard.models import CheckResult, ReserveDecision
+from reserveguard.provider_check import (
+    ProviderRecord,
+    check_against_provider,
+    record_from_api,
+    report_mentions,
+)
 from reserveguard.reserve_engine import AdjustmentPlan
 from reserveguard.scenario import (
     DELIVERY_CONFIRMATIONS,
@@ -26,6 +36,9 @@ from reserveguard.scenario import (
 from reserveguard.settlement import SettlementLine, SettlementService
 
 SELLER_C = "C"
+REPORT_TYPE = "TRANSACTION_RECON_REPORT"
+REPORT_WAIT_S = 30.0
+REPORT_POLL_S = 3.0
 C_WALLET_AFTER_WITHDRAWAL_CENTS = 50_000
 
 
@@ -96,6 +109,42 @@ def all_settled(service: SettlementService, client: AirwallexClient) -> bool:
     return ok
 
 
+def provider_reconcile(service: SettlementService, client: RestAirwallexClient) -> bool:
+    """Every transfer and charge in the ledger, as Airwallex itself records it."""
+
+    def fetch(object_id: str, is_charge: bool) -> ProviderRecord:
+        path = "charges" if is_charge else "connected_account_transfers"
+        data = client.request("GET", f"{API}/{path}/{object_id}")
+        return record_from_api(data, is_charge=is_charge)
+
+    return print_checks(check_against_provider(service.ledger, service.sellers, fetch))
+
+
+def show_platform_report(
+    service: SettlementService, client: RestAirwallexClient, since: datetime
+) -> None:
+    """Best effort: ask Airwallex for its reconciliation report of this run. The sandbox may
+    take long to build it, so a report still pending is shown, not treated as a failure."""
+    admin = SandboxAdmin(client)
+    window = (since - timedelta(minutes=1), datetime.now(UTC) + timedelta(minutes=1))
+    report_id = admin.create_platform_report(
+        REPORT_TYPE, *(t.strftime("%Y-%m-%dT%H:%M:%S+0000") for t in window)
+    )
+    deadline = time.monotonic() + REPORT_WAIT_S
+    report = admin.get_platform_report(report_id)
+    while report.status != "COMPLETED" and time.monotonic() < deadline:
+        time.sleep(REPORT_POLL_S)
+        report = admin.get_platform_report(report_id)
+    print(f"  {REPORT_TYPE} {report_id}: {report.status}")
+    if report.status != "COMPLETED" or report.download_url is None:
+        print("  Airwallex builds it in the background; fetch it later with")
+        print(f"  GET {API}/platform_reports/{report_id}")
+        return
+    ours = {e.object_id for e in service.ledger.entries if e.object_id is not None}
+    found = report_mentions(httpx.get(report.download_url, timeout=30).text, ours)
+    print(f"  report lists {len(found)} of our {len(ours)} payments")
+
+
 def reconcile(service: SettlementService, client: AirwallexClient) -> bool:
     settled = all_settled(service, client)
     return print_checks(service.reconciliation()) and settled
@@ -109,6 +158,7 @@ def main() -> int:
     settings = Settings(use_fake_airwallex=not live)
     service, client = build_service(settings)
     # Live idempotency keys derive from the cycle id, so each live run needs a fresh one.
+    started_at = datetime.now(UTC)
     cycle_id = f"live-{datetime.now(UTC):%Y%m%d%H%M%S}" if live else "2026-10-cycle-1"
     seller_c = next(s for s in service.sellers if s.seller_id == SELLER_C)
     ok = True
@@ -145,6 +195,14 @@ def main() -> int:
     print(f"Memo: {service.memos(SELLER_C)[-1]}")
     print_totals(service.ledger.totals(SELLER_C))
     ok &= reconcile(service, client)
+
+    if isinstance(client, RestAirwallexClient):
+        heading("Airwallex's own records")
+        ok &= provider_reconcile(service, client)
+        try:
+            show_platform_report(service, client, started_at)
+        except AirwallexError as exc:
+            print(f"  platform report unavailable: {exc}")
 
     heading("Result")
     print("All reconciliation checks passed." if ok else "Some reconciliation checks FAILED.")

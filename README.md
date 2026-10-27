@@ -116,6 +116,11 @@ A change is done when tests pass with at least 80% coverage, ruff and mypy are c
 The full flow has run end to end on the live sandbox: seller onboarding, payouts, the
 shortfall charge and the reserve release all settled, and every reconciliation check passed.
 
+After the ledger checks, the live demo checks every transfer and charge against Airwallex's own
+records (same seller account, amount and currency, SETTLED). It also requests a
+`TRANSACTION_RECON_REPORT` for the run. The sandbox can take a long time to build it, so the demo
+prints its id to fetch later rather than failing.
+
 If login fails with 401 or 403 although `.env` is right, check your shell for exported
 `AIRWALLEX_*` variables: environment variables override `.env`.
 
