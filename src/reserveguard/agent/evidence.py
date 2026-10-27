@@ -143,7 +143,31 @@ def classify_with_llm(items: Sequence[EvidenceItem], settings: Settings) -> list
     result = _call_claude(items, settings)
     for raw in result.signals:
         _check_llm_signal(raw, by_id)
-    return [_signal(raw.kind, raw.evidence_ids, raw.summary) for raw in result.signals]
+    signals = [_signal(raw.kind, raw.evidence_ids, raw.summary) for raw in result.signals]
+    return _count_each_item_once(signals)
+
+
+# Same precedence as the keyword rule: an item that is a complaint is not also a failure, etc.
+_PRECEDENCE = (
+    RiskKind.COMPLAINT_CLUSTER,
+    RiskKind.COMPLAINT,
+    RiskKind.TRACKING_FAILURE,
+    RiskKind.DELIVERY_CONFIRMED,
+)
+
+
+def _count_each_item_once(signals: Sequence[RiskSignal]) -> list[RiskSignal]:
+    """One evidence item may back only one signal, so the model cannot add weight by citing
+    the same item twice. Later claims lose the item; a signal left with none is dropped."""
+    rank = {kind: i for i, kind in enumerate(_PRECEDENCE)}
+    claimed: set[str] = set()
+    kept: list[RiskSignal] = []
+    for signal in sorted(signals, key=lambda s: rank.get(s.kind, len(rank))):
+        ids = tuple(i for i in signal.evidence_ids if i not in claimed)
+        if ids:
+            claimed.update(ids)
+            kept.append(signal.model_copy(update={"evidence_ids": ids}))
+    return kept
 
 
 def classify_evidence(

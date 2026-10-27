@@ -90,3 +90,25 @@ def test_llm_claims_are_rechecked(
     )
     monkeypatch.setattr(evidence, "_call_claude", lambda _items, _settings: response)
     assert kind not in [s.kind for s in classify_evidence(items, LLM_ON)]
+
+
+def test_llm_cannot_count_one_evidence_item_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen live: Claude cited ev-c-002 in the cluster AND as a tracking failure (+500 bps)."""
+    items = load_evidence(SAMPLE_EVIDENCE_PATH)
+    cluster = ["ev-c-001", "ev-c-002", "ev-c-003", "ev-c-004"]
+    response = _LLMResponse(
+        signals=[
+            _LLMSignal(kind=RiskKind.COMPLAINT_CLUSTER, evidence_ids=cluster, summary="c"),
+            _LLMSignal(kind=RiskKind.TRACKING_FAILURE, evidence_ids=["ev-c-005"], summary="t"),
+            _LLMSignal(kind=RiskKind.TRACKING_FAILURE, evidence_ids=["ev-c-002"], summary="t"),
+        ]
+    )
+    monkeypatch.setattr(evidence, "_call_claude", lambda _items, _settings: response)
+
+    signals = classify_evidence(items, LLM_ON)
+
+    assert [(s.kind, s.evidence_ids) for s in signals] == [
+        (RiskKind.COMPLAINT_CLUSTER, tuple(cluster)),
+        (RiskKind.TRACKING_FAILURE, ("ev-c-005",)),
+    ]
+    assert sum(sig.weight_bps for sig in signals) == 2000  # same as the keyword rule
