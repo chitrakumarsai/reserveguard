@@ -403,7 +403,8 @@ function wire() {
       $("token-input").value = "";
       $("token-dialog").close();
     } catch (error) {
-      $("token-error").textContent = error.message;
+      // A rejected token already set its own message in signOut(); keep that one.
+      if (error.message !== "Not signed in") $("token-error").textContent = error.message;
       if (!$("token-dialog").open) $("token-dialog").showModal();
     }
   });
