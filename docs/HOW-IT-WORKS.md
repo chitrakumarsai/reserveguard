@@ -112,14 +112,16 @@ payments, not the 2026-10-29 ones.
 No. Claude only turns messy text, like customer complaints, into labelled risk signals, and
 only when `USE_LLM` is on. Its labels are re-checked against the evidence, and if they don't
 hold up we fall back to the keyword rule. Each signal's weight, the rates, the cap and every
-dollar amount come from fixed rules in code that you can read and test. The memo is filled in
-from a fixed template, not written by Claude.
+dollar amount come from fixed rules in code that you can read and test. The rate is capped
+at 40%. The memo is filled in from a fixed template, not written by Claude.
 
 **What stops one seller's money being used for another?**
 Each seller has their own Airwallex account, and the ledger tracks every seller separately.
 Reconciliation checks after each step that no seller received, or was charged, more than
 their own share. No decision ever reads another seller's balance. The only place sellers are
 added up is the platform-balance check, which exists to catch exactly this kind of mix-up.
+Startup refuses two sellers on one account, and a saved ledger won't load if a seller's
+account has changed.
 
 **What happens if the seller can't cover a higher reserve?**
 We first try to charge the gap from the seller's Airwallex wallet. If their wallet is short,
@@ -131,8 +133,8 @@ next step.
 
 **Why are A and B overridden instead of using their real age?**
 The sandbox accounts were all created a few days ago, so the age rule would put everyone at the
-new-seller rate. The override is one line per seller in a config file. A real marketplace with
-older sellers wouldn't need it.
+new-seller rate. The override is one line per seller in a config file. C's tier comes from the
+real age rule. A real marketplace with older sellers wouldn't need it.
 
 **How do you know the money really moved?**
 Each transfer and charge is checked against Airwallex's own record until it shows SETTLED,
@@ -141,3 +143,6 @@ account, the currency and the status against the ledger. Airwallex's reconciliat
 the 2026-10-29 live run also matches our ledger line for line. That run was before the
 idempotency fix above. The run after the fix (2026-10-30) is backed by the per-payment checks and
 the new payment IDs, not by a report, because the report takes about 70 minutes to build.
+
+*Has this ever caught anything?* Yes. The platform-balance check caught the bug where the second
+run's $800 charge and $600 release never really happened (see "Bug caught by reconciliation").
