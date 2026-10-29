@@ -8,9 +8,10 @@ a safety reserve for each seller, and sends the rest to that seller's own Airwal
 How much it holds depends on how much we trust the seller. When new evidence arrives about one
 seller, such as complaints that orders never arrived, ReserveGuard raises that seller's
 reserve. If the seller's wallet can't cover the higher reserve, it collects the gap from them.
-When deliveries are confirmed, it lowers the reserve and gives the money back. Claude reads the
-messy evidence and writes the explanation memos. Every dollar amount is worked out by plain,
-fixed rules in code. Claude never decides an amount and never touches the API keys.
+When deliveries are confirmed, it lowers the reserve and gives the money back. With `USE_LLM` on, Claude reads the messy evidence and
+labels it as risk signals; with it off (the default), a simple keyword rule does the same job.
+The explanation memos are filled in from a fixed template. Every dollar amount is worked out by
+plain, fixed rules in code. Claude never decides an amount and never touches the API keys.
 
 ## The flow
 
@@ -53,7 +54,8 @@ its age.
 - The ledger is saved to a database, so a restart loses nothing.
 - Airwallex's own reconciliation report for the 2026-10-29 live run lists all five money
   movements as SETTLED, with amounts matching our ledger. It's saved in
-  `evidence/2026-10-29-sandbox-recon-report.csv`. That report takes about 70 minutes to build in
+  `evidence/2026-10-29-sandbox-recon-report.csv`. That run was before the idempotency fix
+  described below. That report takes about 70 minutes to build in
   the sandbox, so live we show the instant per-payment checks instead.
 
 **Demo-only:**
@@ -108,18 +110,24 @@ payments, not the 2026-10-29 ones.
 
 **Does the AI decide how much money to hold?**
 No. Claude only turns messy text, like customer complaints, into labelled risk signals, and
-writes the memo. Each signal's weight, the rates, the cap and every dollar amount come from
-fixed rules in code that you can read and test.
+only when `USE_LLM` is on. Its labels are re-checked against the evidence, and if they don't
+hold up we fall back to the keyword rule. Each signal's weight, the rates, the cap and every
+dollar amount come from fixed rules in code that you can read and test. The memo is filled in
+from a fixed template, not written by Claude.
 
 **What stops one seller's money being used for another?**
 Each seller has their own Airwallex account, and the ledger tracks every seller separately.
 Reconciliation checks after each step that no seller received, or was charged, more than
-their own share. The code never adds balances up across sellers.
+their own share. No decision ever reads another seller's balance. The only place sellers are
+added up is the platform-balance check, which exists to catch exactly this kind of mix-up.
 
 **What happens if the seller can't cover a higher reserve?**
 We first try to charge the gap from the seller's Airwallex wallet. If their wallet is short,
 the rest is recorded as debt the seller owes. When their reserve later comes down, that debt is
-cancelled first, and only what's left over is released back to them.
+cancelled first, and only what's left over is released back to them. We don't yet take the
+debt out of the seller's future payouts. It's collected only if a later reassessment finds money
+in their wallet, or cancelled when the reserve comes down. Netting it against payouts is the
+next step.
 
 **Why are A and B overridden instead of using their real age?**
 The sandbox accounts were all created a few days ago, so the age rule would put everyone at the
@@ -128,5 +136,8 @@ older sellers wouldn't need it.
 
 **How do you know the money really moved?**
 Each transfer and charge is checked against Airwallex's own record until it shows SETTLED,
-against the right seller's account. On top of that, Airwallex's reconciliation report for the
-live run matches our ledger line for line.
+against the right seller's account. On top of that, we fetch every payment back from Airwallex and check the amount, the seller's
+account, the currency and the status against the ledger. Airwallex's reconciliation report for
+the 2026-10-29 live run also matches our ledger line for line. That run was before the
+idempotency fix above. The run after the fix (2026-10-30) is backed by the per-payment checks and
+the new payment IDs, not by a report, because the report takes about 70 minutes to build.
