@@ -228,6 +228,7 @@ __marimo__/
 # Markdown docs stay local only (CLAUDE.md, docs/, ECC rules); the root README is published
 *.md
 !/README.md
+!/docs/HOW-IT-WORKS.md
 
 # Sandbox connected-account ids written by scripts/sandbox_setup.py
 data/sandbox_sellers.*
