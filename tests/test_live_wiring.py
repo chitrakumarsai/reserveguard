@@ -27,6 +27,7 @@ from reserveguard.scenario import (
     SellerFile,
     build_service,
     demo_seller_specs,
+    fetch_accounts,
     load_seller_accounts,
     load_seller_file,
     onboard_demo_sellers,
@@ -261,6 +262,23 @@ def test_build_service_uses_fake_by_default(sellers_file: Path) -> None:
     assert isinstance(client, FakeAirwallexClient)
     assert {s.account_id for s in service.sellers} == {s.account_id for s in DEMO_SELLERS}
     assert warning is None
+
+
+def test_fetch_accounts_reads_a_full_page_then_the_last_page(api: respx.MockRouter) -> None:
+    # Airwallex's minimum page_size is 10, so a real second page needs 11+ accounts
+    accounts = [_account(f"acct_{n:02d}", f"Shop {n}") for n in range(11)]
+    pages = [(accounts[:10], True), (accounts[10:], False)]
+    route = api.get("/api/v1/accounts").mock(
+        side_effect=[
+            respx.MockResponse(200, json={"items": items, "has_more": more, "total_count": 11})
+            for items, more in pages
+        ]
+    )
+
+    found = fetch_accounts(RestAirwallexClient(_settings(use_fake_airwallex=False)))
+
+    assert [a["id"] for a in found] == [a["id"] for a in accounts]
+    assert [call.request.url.params["page_num"] for call in route.calls] == ["0", "1"]
 
 
 def test_build_service_live_loads_sellers_from_airwallex(
