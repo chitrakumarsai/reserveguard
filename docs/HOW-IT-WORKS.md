@@ -55,7 +55,8 @@ its age.
 - Airwallex's own reconciliation report for the 2026-10-29 live run lists all five money
   movements as SETTLED, with amounts matching our ledger. It's saved in
   `evidence/2026-10-29-sandbox-recon-report.csv`. That run was before the idempotency fix
-  described below. That report takes about 70 minutes to build in
+  described below. The report for the run after the fix matches too, and is saved in
+  `evidence/2026-10-30-sandbox-recon-report.csv`. Each report takes about 70 minutes to build in
   the sandbox, so live we show the instant per-payment checks instead.
 
 **Demo-only:**
@@ -99,7 +100,9 @@ check that a retry reuses its key, both in the same run and after a restart.
 
 **Confirmed live.** After the fix we ran the live demo again on 2026-10-30. All 33 checks passed,
 and the charge (`ch_nMTg0Ou5Pbeq7aCzwHE5bg`) and release (`tr_1bkF67DbP0WMmIja46S9Dg`) were new
-payments, not the 2026-10-29 ones.
+payments, not the 2026-10-29 ones. Airwallex's reconciliation report for that run lists all five
+movements as SETTLED with the same IDs and amounts as our ledger
+(`evidence/2026-10-30-sandbox-recon-report.csv`).
 
 ## Known limitations
 
@@ -140,9 +143,9 @@ real age rule. A real marketplace with older sellers wouldn't need it.
 Each transfer and charge is checked against Airwallex's own record until it shows SETTLED,
 against the right seller's account. On top of that, we fetch every payment back from Airwallex and check the amount, the seller's
 account, the currency and the status against the ledger. Airwallex's reconciliation report for
-the 2026-10-29 live run also matches our ledger line for line. That run was before the
-idempotency fix above. The run after the fix (2026-10-30) is backed by the per-payment checks and
-the new payment IDs, not by a report, because the report takes about 70 minutes to build.
+both live runs matches our ledger line for line: the 2026-10-29 run, before the idempotency fix
+above, and the 2026-10-30 run after it. The report takes about 70 minutes to build, so in a live
+demo we show the per-payment checks.
 
 *Has this ever caught anything?* Yes. The platform-balance check caught the bug where the second
 run's $800 charge and $600 release never really happened (see "Bug caught by reconciliation").
