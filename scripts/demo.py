@@ -161,7 +161,9 @@ def main() -> int:
     # throwaway database instead of the API's persistent one.
     run_db = Path(tempfile.mkdtemp(prefix="reserveguard-demo-")) / "ledger.db"
     settings = Settings(use_fake_airwallex=not live, reserveguard_db_path=run_db)
-    service, client = build_service(settings)
+    service, client, seller_warning = build_service(settings)
+    if seller_warning:
+        print(f"WARNING: {seller_warning}")
     # Live idempotency keys derive from the cycle id, so each live run needs a fresh one.
     started_at = datetime.now(UTC)
     cycle_id = f"live-{datetime.now(UTC):%Y%m%d%H%M%S}" if live else "2026-10-cycle-1"

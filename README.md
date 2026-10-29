@@ -64,8 +64,9 @@ platform balance used by reconciliation.
 
 - A restart keeps everything. Replaying a cycle never pays twice, and a pending approval is
   still waiting.
-- On startup the stored seller-to-account mapping is checked. If `data/sandbox_sellers.json` has
-  changed, the server refuses to start rather than mix sellers' money.
+- On startup the stored seller-to-account mapping is checked. Sellers added since the last
+  save start fresh, but if a stored seller's account changed or it is gone, the server refuses
+  to start rather than mix or drop sellers' money.
 - To start a fresh ledger, stop the server and delete `data/reserveguard.db*`.
 
 Fake mode stays in memory, and `scripts/demo.py` uses a throwaway database for each run because
@@ -129,12 +130,22 @@ A change is done when tests pass with at least 80% coverage, ruff and mypy are c
    payments, `connected_account_transfers/create` and `charges/create` fail. Until then,
    onboarding fails with `This account cannot onboard business accounts`.
 4. Onboard the demo sellers (each is a "Sandbox Business" with an EIN, auto-approved in the
-   sandbox). This writes their account ids to `data/sandbox_sellers.json` (git-ignored),
-   saving after each seller so a failed run resumes where it stopped (`--force` starts over):
+   sandbox). This writes their account ids and tiers to `data/sandbox_sellers.json`
+   (git-ignored), saving after each seller so a failed run resumes where it stopped
+   (`--force` starts over):
 
    ```bash
    uv run python scripts/sandbox_setup.py
    ```
+
+   If you already have sandbox accounts, copy `data/sandbox_sellers.example.json` to
+   `data/sandbox_sellers.json` and fill in your account ids instead. In live mode the seller
+   list comes from Airwallex (`GET /api/v1/accounts`): every `ACTIVE` account is a seller,
+   named by its nickname. The file maps accounts to demo sellers A/B/C, can set a seller's
+   `tier`, and lists `hidden` accounts to leave out. A seller without a tier is tiered by
+   account age: under 90 days is new (15%), under 365 is standard (10%), and older is trusted
+   (5%). If the account list cannot be loaded, the server still starts with the sellers of the
+   saved ledger (or the file), logs a warning, and the console shows "using cached sellers".
 5. Run the demo against the sandbox, or start the API with `USE_FAKE_AIRWALLEX=false`:
 
    ```bash

@@ -51,7 +51,12 @@ def test_console_page_scripts_never_write_html_from_data(client: TestClient) -> 
 def test_info_reports_mode_without_secrets(client: TestClient) -> None:
     body = client.get("/info", headers=_auth()).json()
 
-    assert body == {"airwallex": "fake", "classifier": "keywords", "llm_model": None}
+    assert body == {
+        "airwallex": "fake",
+        "classifier": "keywords",
+        "llm_model": None,
+        "seller_warning": None,
+    }
     assert client.get("/info").status_code == 401
 
 

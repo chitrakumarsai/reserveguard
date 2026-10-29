@@ -97,6 +97,12 @@ async function connect(token) {
   const live = info.airwallex === "sandbox";
   $("env-airwallex").textContent = live ? "Airwallex sandbox · live" : "Simulated Airwallex";
   $("env-airwallex").dataset.tone = live ? "ok" : "muted";
+  if (info.seller_warning) {
+    $("env-airwallex").textContent = "Airwallex sandbox · using cached sellers";
+    $("env-airwallex").dataset.tone = "warn";
+    $("env-airwallex").title = info.seller_warning;
+    toast(info.seller_warning);
+  }
   $("env-classifier").textContent = info.llm_model ? `Claude · ${info.llm_model}` : "Keyword rules";
   $("env-classifier").dataset.tone = info.llm_model ? "held" : "muted";
   state.samples = await optional(api("/samples/evidence"));

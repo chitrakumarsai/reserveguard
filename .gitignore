@@ -231,4 +231,5 @@ __marimo__/
 
 # Sandbox connected-account ids written by scripts/sandbox_setup.py
 data/sandbox_sellers.*
+!data/sandbox_sellers.example.json
 data/reserveguard.db*

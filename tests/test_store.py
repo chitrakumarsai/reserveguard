@@ -10,8 +10,9 @@ import pytest
 from reserveguard.agent.evidence import classify_evidence, load_evidence
 from reserveguard.airwallex.fake import FakeAirwallexClient
 from reserveguard.config import Settings
+from reserveguard.models import Seller, Tier
 from reserveguard.scenario import DEMO_GROSS_CENTS, DEMO_SELLERS, SAMPLE_EVIDENCE_PATH
-from reserveguard.settlement import PaymentNotSettledError, SettlementService
+from reserveguard.settlement import PaymentNotSettledError, SettlementService, stored_sellers
 from reserveguard.store import SCHEMA_VERSION, SqliteStore, StoreError
 
 pytestmark = pytest.mark.unit
@@ -114,6 +115,33 @@ def test_a_changed_seller_account_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(StoreError, match="account"):
         SettlementService(fake, moved, store=SqliteStore(db))
+
+
+def test_a_seller_missing_since_the_last_save_is_refused(tmp_path: Path) -> None:
+    fake, db = _fake(), tmp_path / "rg.db"
+    _service(fake, db).settle_cycle({"A": 100_000}, cycle_id="c1")
+
+    with pytest.raises(StoreError, match="A"):
+        SettlementService(fake, DEMO_SELLERS[1:], store=SqliteStore(db))
+
+
+def test_a_seller_added_since_the_last_save_starts_fresh(tmp_path: Path) -> None:
+    fake, db = _fake(), tmp_path / "rg.db"
+    _service(fake, db).settle_cycle({"A": 100_000}, cycle_id="c1")
+    added = Seller("D", "Seller D", Tier.NEW, "acct_seller_d")
+
+    service = SettlementService(fake, (*DEMO_SELLERS, added), store=SqliteStore(db))
+
+    assert service.ledger.totals("A").gross_cents == 100_000
+    assert service.current_rate_bps("D") == 1_500
+
+
+def test_saved_ledger_remembers_each_sellers_name_and_tier(tmp_path: Path) -> None:
+    db = tmp_path / "rg.db"
+    _service(_fake(), db)
+    snapshot = SqliteStore(db).load()
+    assert snapshot is not None
+    assert stored_sellers(snapshot, {}) == DEMO_SELLERS
 
 
 def test_ledger_is_kept_as_rows(tmp_path: Path) -> None:

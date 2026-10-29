@@ -94,6 +94,7 @@ class InfoOut(BaseModel):
     airwallex: str  # "sandbox" (live REST client) or "fake"
     classifier: str  # "claude" or "keywords"
     llm_model: str | None
+    seller_warning: str | None = None  # set when sellers came from cache, not Airwallex
 
 
 class SamplesOut(BaseModel):
@@ -222,7 +223,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="ReserveGuard")
-    app.state.service, _ = build_service(settings, sellers_path)
+    app.state.service, _, seller_warning = build_service(settings, sellers_path)
     assess_limit = RateLimiter(ASSESS_RATE_LIMIT, ASSESS_RATE_WINDOW_S)
     app.state.api_token = settings.reserveguard_api_token.get_secret_value()
 
@@ -251,6 +252,7 @@ def create_app(
             airwallex="fake" if settings.use_fake_airwallex else "sandbox",
             classifier="claude" if settings.use_llm else "keywords",
             llm_model=settings.llm_model if settings.use_llm else None,
+            seller_warning=seller_warning,
         )
 
     @app.get("/samples/evidence", response_model=SamplesOut, dependencies=Authorized)

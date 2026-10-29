@@ -1,0 +1,18 @@
+{
+  "hidden": [
+    "acct_REPLACE_WITH_ANY_ACCOUNT_TO_HIDE"
+  ],
+  "sellers": {
+    "A": {
+      "account_id": "acct_REPLACE_WITH_SELLER_A_ID",
+      "tier": "trusted"
+    },
+    "B": {
+      "account_id": "acct_REPLACE_WITH_SELLER_B_ID",
+      "tier": "standard"
+    },
+    "C": {
+      "account_id": "acct_REPLACE_WITH_SELLER_C_ID"
+    }
+  }
+}

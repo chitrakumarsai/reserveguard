@@ -24,6 +24,7 @@ from reserveguard.models import (
     ReserveDecision,
     RiskSignal,
     Seller,
+    Tier,
 )
 from reserveguard.reserve_engine import (
     AdjustmentPlan,
@@ -102,6 +103,9 @@ class SellerStatement:
 
 
 class _StoredSeller(BaseModel):
+    # name/tier let a restart rebuild the seller list without Airwallex; absent in older ledgers
+    name: str = ""
+    tier: Tier | None = None
     rate_bps: int
     gross_cents: int
     signals: tuple[RiskSignal, ...]
@@ -411,6 +415,8 @@ class SettlementService:
         state = _StoredState(
             sellers={
                 seller_id: _StoredSeller(
+                    name=s.seller.name,
+                    tier=s.seller.tier,
                     rate_bps=s.rate_bps,
                     gross_cents=s.gross_cents,
                     signals=s.signals,
@@ -433,10 +439,16 @@ class SettlementService:
         )
 
     def _restore(self, snapshot: Snapshot) -> None:
+        # Sellers added since the last save start fresh; a stored one that moved account or
+        # disappeared would orphan or misdirect money it holds.
         accounts = {sid: s.seller.account_id for sid, s in self._states.items()}
-        if dict(snapshot.accounts) != accounts:
+        changed = sorted(
+            sid for sid, acct in snapshot.accounts.items() if accounts.get(sid) != acct
+        )
+        if changed:
             raise StoreError(
-                "seller accounts differ from the stored ledger; refusing to mix sellers' money"
+                f"seller accounts differ from the stored ledger (sellers {', '.join(changed)});"
+                " refusing to mix sellers' money"
             )
         state = _StoredState.model_validate(snapshot.state)
         self._opening_balance_cents = snapshot.opening_balance_cents
@@ -508,6 +520,19 @@ class SettlementService:
                 if attempt == MAX_ATTEMPTS:
                     raise
         raise AssertionError("unreachable")  # pragma: no cover
+
+
+def stored_sellers(snapshot: Snapshot, tiers: Mapping[str, Tier]) -> tuple[Seller, ...]:
+    """The sellers a saved ledger was written for. A ledger saved before names and tiers
+    were stored falls back to ``tiers``, then to NEW (the highest base reserve)."""
+    stored = _StoredState.model_validate(snapshot.state).sellers
+    sellers = []
+    for seller_id, account_id in snapshot.accounts.items():
+        saved = stored.get(seller_id)
+        name = saved.name if saved and saved.name else f"Seller {seller_id}"
+        tier = saved.tier if saved and saved.tier else tiers.get(seller_id, Tier.NEW)
+        sellers.append(Seller(seller_id, name, tier, account_id))
+    return tuple(sellers)
 
 
 def _validate_unique(sellers: Sequence[Seller]) -> None:
