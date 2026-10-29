@@ -1,7 +1,10 @@
 """The service confirms each payment before trusting it: failed ones are never recorded,
 pending ones are recorded and re-checked, and one deadline bounds each command."""
 
+import sqlite3
+import uuid
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -17,11 +20,13 @@ from reserveguard.scenario import (
     SAMPLE_EVIDENCE_PATH,
 )
 from reserveguard.settlement import (
+    _KEY_NAMESPACE,
     MAX_ATTEMPTS,
     PAYMENT_WAIT_BUDGET_S,
     PaymentNotSettledError,
     SettlementService,
 )
+from reserveguard.store import SqliteStore
 
 pytestmark = pytest.mark.unit
 
@@ -170,3 +175,58 @@ def test_hold_releases_sends_a_decrease_to_approval() -> None:
     assert decision.needs_approval is True and memo is None
     assert fake.get_balance("acct_seller_c") == wallet  # nothing released yet
     assert service.approve("C").plan.release_cents == 60_000
+
+
+def _object_ids(service: SettlementService, kind: EntryKind) -> list[str | None]:
+    return [e.object_id for e in service.ledger.entries if e.kind is kind]
+
+
+def test_fresh_ledgers_on_one_account_never_share_idempotency_keys() -> None:
+    # Regression: the 2026-10-30 live run got the previous run's charge back from Airwallex,
+    # because a fresh ledger rebuilt the same charge:C:80000:<position> key.
+    fake = FakeAirwallexClient({None: 2 * sum(DEMO_GROSS_CENTS.values())})
+    runs = []
+    for _ in range(2):
+        service = SettlementService(fake, DEMO_SELLERS, await_payment=ScriptedWait())
+        service.settle_cycle(DEMO_GROSS_CENTS, cycle_id="c1")
+        service.assess("C", RISK)
+        service.approve("C")
+        service.assess("C", DELIVERED)
+        runs.append(service)
+
+    first, second = runs
+    for kind in (EntryKind.PAYOUT, EntryKind.CHARGE, EntryKind.RELEASE):
+        assert _object_ids(first, kind), kind
+        assert set(_object_ids(first, kind)).isdisjoint(_object_ids(second, kind)), kind
+    assert len(set(fake.calls)) == len(fake.calls)  # every money call used a new key
+
+
+def test_charge_retried_after_a_restart_reuses_its_key(tmp_path: Path) -> None:
+    fake = FakeAirwallexClient({None: sum(DEMO_GROSS_CENTS.values())})
+    db = tmp_path / "rg.db"
+    service = SettlementService(fake, DEMO_SELLERS, store=SqliteStore(db))
+    service.settle_cycle(DEMO_GROSS_CENTS, cycle_id="c1")
+    service.assess("C", RISK)
+    fake.fail_next(MAX_ATTEMPTS)
+    with pytest.raises(AirwallexTransientError):
+        service.approve("C")  # outcome unknown: Airwallex may have made the charge
+
+    restarted = SettlementService(fake, DEMO_SELLERS, store=SqliteStore(db))
+    restarted.approve("C")
+
+    charge_keys = fake.calls[-(MAX_ATTEMPTS + 1) :]
+    assert len(set(charge_keys)) == 1  # the stored ledger id keeps the key stable
+
+
+def test_ledger_saved_before_ledger_ids_keeps_its_unscoped_keys(tmp_path: Path) -> None:
+    fake = FakeAirwallexClient({None: sum(DEMO_GROSS_CENTS.values())})
+    db = tmp_path / "rg.db"
+    SettlementService(fake, DEMO_SELLERS, store=SqliteStore(db))
+    with sqlite3.connect(db) as conn:
+        conn.execute("DELETE FROM meta WHERE key = 'ledger_id'")  # as an older version saved it
+
+    legacy = SettlementService(fake, DEMO_SELLERS, store=SqliteStore(db))
+    legacy.settle_cycle({"A": DEMO_GROSS_CENTS["A"]}, cycle_id="c1")
+
+    paid = _payouts(legacy, "A")
+    assert fake.calls[-1] == str(uuid.uuid5(_KEY_NAMESPACE, f"payout:c1:A:{paid}"))
