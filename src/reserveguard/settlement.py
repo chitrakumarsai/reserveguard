@@ -153,6 +153,9 @@ class SettlementService:
         self._failed_keys: set[str] = set()
         self._states = {s.seller_id: _SellerState(s, base_rate_bps(s.tier)) for s in sellers}
         self._ledger = Ledger()
+        # Each new ledger gets its own key space, so a fresh or reset ledger can never get an
+        # earlier ledger's payment back from Airwallex's idempotency dedupe.
+        self._ledger_id = uuid.uuid4().hex
         self._settled: dict[tuple[str, str], SettlementLine] = {}
         self._lock = threading.RLock()
         snapshot = store.load() if store else None
@@ -435,6 +438,7 @@ class SettlementService:
                 accounts={sid: s.seller.account_id for sid, s in self._states.items()},
                 entries=self._ledger.entries,
                 state=state.model_dump(mode="json"),
+                ledger_id=self._ledger_id,
             )
         )
 
@@ -452,6 +456,8 @@ class SettlementService:
             )
         state = _StoredState.model_validate(snapshot.state)
         self._opening_balance_cents = snapshot.opening_balance_cents
+        # Keep a pre-id ledger on its old keys, so retries of its in-flight payments still dedupe.
+        self._ledger_id = snapshot.ledger_id
         self._ledger = Ledger(entries=snapshot.entries)
         self._settled = {(cycle, seller): line for cycle, seller, line in state.settled}
         self._unconfirmed = set(state.unconfirmed)
@@ -481,7 +487,8 @@ class SettlementService:
         """Deterministic idempotency key: a retry after a timeout or crash reuses it, so
         Airwallex dedupes. Once a payment under it FAILED, the next key is used instead."""
         for attempt in itertools.count():
-            name = operation if attempt == 0 else f"{operation}:retry{attempt}"
+            scoped = f"{self._ledger_id}:{operation}" if self._ledger_id else operation
+            name = scoped if attempt == 0 else f"{scoped}:retry{attempt}"
             key = str(uuid.uuid5(_KEY_NAMESPACE, name))
             if key not in self._failed_keys:
                 return key

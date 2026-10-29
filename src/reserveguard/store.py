@@ -45,6 +45,7 @@ class Snapshot:
     accounts: Mapping[str, str]  # seller_id -> Airwallex account id
     entries: tuple[LedgerEntry, ...]
     state: Mapping[str, Any]  # JSON-safe service state
+    ledger_id: str = ""  # scopes idempotency keys; "" for a ledger saved before ids existed
 
 
 class SqliteStore:
@@ -89,6 +90,7 @@ class SqliteStore:
             accounts=json.loads(meta["accounts"]),
             entries=entries,
             state=json.loads(state_row[0]) if state_row else {},
+            ledger_id=meta.get("ledger_id", ""),
         )
 
     def save(self, snapshot: Snapshot) -> None:
@@ -115,6 +117,7 @@ class SqliteStore:
                 [
                     ("opening_balance_cents", str(snapshot.opening_balance_cents)),
                     ("accounts", json.dumps(dict(snapshot.accounts), sort_keys=True)),
+                    ("ledger_id", snapshot.ledger_id),
                 ],
             )
             conn.execute(
