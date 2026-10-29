@@ -24,6 +24,11 @@ def _settled(seller: str, gross: int, fee: int, reserve: int) -> Ledger:
     return ledger
 
 
+def _two_sellers() -> Ledger:
+    a, b = _settled("A", 300_000, 30_000, 15_000), _settled("B", 300_000, 30_000, 30_000)
+    return Ledger(entries=(*a.entries, *b.entries))
+
+
 def test_record_returns_new_ledger() -> None:
     empty = Ledger()
     one = empty.record(_entry("A", EntryKind.GROSS, 100))
@@ -37,8 +42,7 @@ def test_record_rejects_negative_amount() -> None:
 
 
 def test_totals_are_scoped_to_one_seller() -> None:
-    ledger = _settled("A", 300_000, 30_000, 15_000)
-    ledger = ledger.merge(_settled("B", 300_000, 30_000, 30_000))
+    ledger = _two_sellers()
     totals = ledger.totals("A")
     assert totals.gross_cents == 300_000
     assert totals.held_cents == 15_000
@@ -69,7 +73,7 @@ def test_release_and_debt_cancel() -> None:
 
 
 def test_all_checks_pass_for_consistent_state() -> None:
-    ledger = _settled("A", 300_000, 30_000, 15_000).merge(_settled("B", 300_000, 30_000, 30_000))
+    ledger = _two_sellers()
     results = run_checks(ledger, platform_balance_cents=105_000)
     assert results
     assert all(r.passed for r in results), results

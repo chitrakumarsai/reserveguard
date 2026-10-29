@@ -51,6 +51,29 @@ def test_every_command_survives_a_restart(tmp_path: Path) -> None:
     assert all(c.passed for c in _service(fake, db).reconciliation())
 
 
+def test_a_second_process_cannot_overwrite_the_ledger(tmp_path: Path) -> None:
+    fake, db = _fake(), tmp_path / "rg.db"
+    first, second = _service(fake, db), _service(fake, db)
+    first.settle_cycle({"A": 300_000}, cycle_id="c1")
+
+    with pytest.raises(StoreError, match="another process"):
+        second.settle_cycle({"B": 300_000}, cycle_id="c2")
+
+    assert _service(fake, db).ledger.entries == first.ledger.entries
+
+
+def test_a_failed_payment_key_is_not_reused_after_a_restart(tmp_path: Path) -> None:
+    fake, db = _fake(), tmp_path / "rg.db"
+    statuses = iter(["FAILED"])
+    failing = _service(fake, db, await_payment=lambda _id, _left: next(statuses, "SETTLED"))
+    with pytest.raises(PaymentNotSettledError):
+        failing.settle_cycle({"A": 300_000}, cycle_id="c1")
+
+    _service(fake, db).settle_cycle({"A": 300_000}, cycle_id="c1")
+
+    assert len(set(fake.calls)) == 2
+
+
 def test_replaying_a_cycle_after_a_restart_never_pays_twice(tmp_path: Path) -> None:
     fake, db = _fake(), tmp_path / "rg.db"
     first = _service(fake, db).settle_cycle(DEMO_GROSS_CENTS, cycle_id="c1")

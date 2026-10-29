@@ -1,5 +1,6 @@
 """Orchestrates settlement cycles and reserve changes through an AirwallexClient."""
 
+import itertools
 import threading
 import time
 import uuid
@@ -114,6 +115,7 @@ class _StoredState(BaseModel):
     sellers: dict[str, _StoredSeller]
     settled: list[tuple[str, str, SettlementLine]]
     unconfirmed: list[str]
+    failed_keys: list[str] = []  # absent in ledgers saved before keys could fail
 
 
 @dataclass(frozen=True)
@@ -144,11 +146,11 @@ class SettlementService:
         self._deadline = 0.0
         self._store = store
         self._unconfirmed: set[str] = set()
+        self._failed_keys: set[str] = set()
         self._states = {s.seller_id: _SellerState(s, base_rate_bps(s.tier)) for s in sellers}
         self._ledger = Ledger()
         self._settled: dict[tuple[str, str], SettlementLine] = {}
         self._lock = threading.RLock()
-        self.last_settlement: tuple[SettlementLine, ...] = ()
         snapshot = store.load() if store else None
         if snapshot is None:
             # The platform account may hold money this ledger never touched (e.g. sandbox
@@ -236,7 +238,6 @@ class SettlementService:
                 else:
                     self._recheck(done.transfer_id)
                 lines.append(done)
-            self.last_settlement = tuple(lines)
             return lines
 
     def assess(self, seller_id: str, new_signals: Sequence[RiskSignal]) -> ReserveDecision:
@@ -296,11 +297,8 @@ class SettlementService:
         seller = state.seller
         b = settle_gross(gross_cents, state.rate_bps)
         ref = f"settle:{cycle_id}:{seller.seller_id}"
-        # Deterministic key: a replay of this cycle after a crash reuses it, so Airwallex dedupes.
         # The amount is part of the key: the same cycle with a different amount is a new payout.
-        key = str(
-            uuid.uuid5(_KEY_NAMESPACE, f"payout:{cycle_id}:{seller.seller_id}:{b.payout_cents}")
-        )
+        key = self._key(f"payout:{cycle_id}:{seller.seller_id}:{b.payout_cents}")
         transfer_id = None
         if b.payout_cents > 0:
             transfer_id = self._with_retry(
@@ -309,7 +307,7 @@ class SettlementService:
                 ),
                 key,
             )
-            self._confirm(transfer_id, recorded_before=False)
+            self._confirm(transfer_id, key)
         for kind, cents in [
             (EntryKind.GROSS, b.gross_cents),
             (EntryKind.FEE, b.fee_cents),
@@ -339,14 +337,19 @@ class SettlementService:
         totals = self._ledger.totals(seller.seller_id)
         plan, _ = self._plan(decision)
         ref = f"reserve:{seller.seller_id}"
+        # The seller's ledger length pins the key to this adjustment: a retry before anything is
+        # recorded reuses it, the next adjustment gets a new one.
+        position = sum(1 for e in self._ledger.entries if e.seller_id == seller.seller_id)
         charge_id = release_id = None
         if plan.charge_cents > 0:
+            key = self._key(f"charge:{seller.seller_id}:{plan.charge_cents}:{position}")
             charge_id = self._with_retry(
-                lambda key: self._client.charge_seller(
-                    seller.account_id, plan.charge_cents, seller.currency, ref, key
-                )
+                lambda k: self._client.charge_seller(
+                    seller.account_id, plan.charge_cents, seller.currency, ref, k
+                ),
+                key,
             )
-            self._confirm(charge_id, recorded_before=False)
+            self._confirm(charge_id, key)
             self._record(seller.seller_id, EntryKind.CHARGE, plan.charge_cents, ref, charge_id)
         debt_delta = plan.debt_cents - totals.debt_cents
         if debt_delta > 0:
@@ -354,12 +357,14 @@ class SettlementService:
         elif debt_delta < 0:
             self._record(seller.seller_id, EntryKind.DEBT_CANCEL, -debt_delta, ref, None)
         if plan.release_cents > 0:
+            key = self._key(f"release:{seller.seller_id}:{plan.release_cents}:{position}")
             release_id = self._with_retry(
-                lambda key: self._client.transfer_to_seller(
-                    seller.account_id, plan.release_cents, seller.currency, ref, key
-                )
+                lambda k: self._client.transfer_to_seller(
+                    seller.account_id, plan.release_cents, seller.currency, ref, k
+                ),
+                key,
             )
-            self._confirm(release_id, recorded_before=plan.charge_cents > 0)
+            self._confirm(release_id, key)
             self._record(seller.seller_id, EntryKind.RELEASE, plan.release_cents, ref, release_id)
         memo = draft_memo(decision)
         self._states[seller.seller_id] = replace(
@@ -416,6 +421,7 @@ class SettlementService:
             },
             settled=[(cycle, seller, line) for (cycle, seller), line in self._settled.items()],
             unconfirmed=sorted(self._unconfirmed),
+            failed_keys=sorted(self._failed_keys),
         )
         self._store.save(
             Snapshot(
@@ -437,6 +443,7 @@ class SettlementService:
         self._ledger = Ledger(entries=snapshot.entries)
         self._settled = {(cycle, seller): line for cycle, seller, line in state.settled}
         self._unconfirmed = set(state.unconfirmed)
+        self._failed_keys = set(state.failed_keys)
         for seller_id, stored in state.sellers.items():
             self._states[seller_id] = replace(
                 self._states[seller_id],
@@ -458,12 +465,23 @@ class SettlementService:
         except AirwallexTransientError:
             return "PENDING"
 
-    def _confirm(self, object_id: str, *, recorded_before: bool) -> None:
+    def _key(self, operation: str) -> str:
+        """Deterministic idempotency key: a retry after a timeout or crash reuses it, so
+        Airwallex dedupes. Once a payment under it FAILED, the next key is used instead."""
+        for attempt in itertools.count():
+            name = operation if attempt == 0 else f"{operation}:retry{attempt}"
+            key = str(uuid.uuid5(_KEY_NAMESPACE, name))
+            if key not in self._failed_keys:
+                return key
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def _confirm(self, object_id: str, key: str) -> None:
         """Called right after a payment is created and BEFORE it is recorded: a failed
         payment is never recorded; a still-pending one is recorded and re-checked later."""
         status = self._wait(object_id)
         if status in _UNSETTLED_FINAL:
-            raise PaymentNotSettledError(object_id, status, ledger_applied=recorded_before)
+            self._failed_keys.add(key)  # a retry must create a new payment, not find this one
+            raise PaymentNotSettledError(object_id, status, ledger_applied=False)
         if status != "SETTLED":
             self._unconfirmed.add(object_id)
 
@@ -481,9 +499,8 @@ class SettlementService:
         self._unconfirmed.discard(object_id)
 
     @staticmethod
-    def _with_retry(call: Callable[[str], str], key: str | None = None) -> str:
+    def _with_retry(call: Callable[[str], str], key: str) -> str:
         """One idempotency key per logical operation, reused on every retry."""
-        key = key or str(uuid.uuid4())
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
                 return call(key)

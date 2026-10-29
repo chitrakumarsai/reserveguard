@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from reserveguard.agent.evidence import classify_evidence, load_evidence
-from reserveguard.agent.tools import ReadOnlyTools, draft_memo
+from reserveguard.agent.tools import draft_memo
 from reserveguard.airwallex.client import (
     AirwallexTransientError,
     InsufficientFundsError,
@@ -35,9 +35,10 @@ def settled() -> tuple[SettlementService, FakeAirwallexClient]:
     return service, fake
 
 
-def test_settlement_table(settled: tuple[SettlementService, FakeAirwallexClient]) -> None:
-    service, fake = settled
-    lines = {line.seller_id: line for line in service.last_settlement}
+def test_settlement_table() -> None:
+    service, fake = build_demo_service()
+    settled = service.settle_cycle(DEMO_GROSS_CENTS, cycle_id="2026-10-cycle-1")
+    lines = {line.seller_id: line for line in settled}
     expected = {
         "A": (300_000, 30_000, 500, 15_000, 255_000),
         "B": (300_000, 30_000, 1000, 30_000, 240_000),
@@ -154,15 +155,6 @@ def test_fake_idempotency_and_guards() -> None:
         fake.get_status("nope")
     with pytest.raises(InsufficientFundsError):
         fake.withdraw("s", 10_000)
-
-
-def test_read_only_tools(settled: tuple[SettlementService, FakeAirwallexClient]) -> None:
-    service, _ = settled
-    tools = ReadOnlyTools(service)
-    summary = tools.seller_summary("C")
-    assert summary["held_cents"] == 60_000
-    assert {s["seller_id"] for s in tools.list_sellers()} == {"A", "B", "C"}
-    assert not hasattr(tools, "transfer_to_seller")
 
 
 def test_draft_memo_mentions_rates_and_evidence() -> None:

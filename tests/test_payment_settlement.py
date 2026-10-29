@@ -17,6 +17,7 @@ from reserveguard.scenario import (
     SAMPLE_EVIDENCE_PATH,
 )
 from reserveguard.settlement import (
+    MAX_ATTEMPTS,
     PAYMENT_WAIT_BUDGET_S,
     PaymentNotSettledError,
     SettlementService,
@@ -61,7 +62,7 @@ def _payouts(service: SettlementService, seller_id: str) -> int:
 
 
 def test_failed_payout_is_not_recorded_and_the_cycle_can_be_retried() -> None:
-    service, _ = _service(ScriptedWait("FAILED"))
+    service, fake = _service(ScriptedWait("FAILED"))
 
     with pytest.raises(PaymentNotSettledError) as failed:
         service.settle_cycle({"A": 300_000}, cycle_id="c1")
@@ -71,6 +72,8 @@ def test_failed_payout_is_not_recorded_and_the_cycle_can_be_retried() -> None:
     assert service.ledger.entries == ()
     assert service.settle_cycle({"A": 300_000}, cycle_id="c1")[0].payout_cents == 255_000
     assert _payouts(service, "A") == 255_000
+    # The retry sends a new key: the old one would only find the FAILED transfer again.
+    assert len(fake.calls) == 2 and fake.calls[0] != fake.calls[1]
 
 
 def test_pending_payout_is_recorded_and_rechecked_on_replay() -> None:
@@ -127,6 +130,20 @@ def test_failed_charge_keeps_the_decision_pending() -> None:
     assert service.current_rate_bps("C") == 1500
     # The fake moves money even for a scripted CANCELLED, so only the ledger is checked.
     assert service.approve("C").plan.charge_cents == 80_000  # retry succeeds
+
+
+def test_charge_retried_after_timeouts_reuses_its_key() -> None:
+    service, fake = _service(ScriptedWait())
+    service.settle_cycle(DEMO_GROSS_CENTS, cycle_id="c1")
+    service.assess("C", RISK)
+    fake.fail_next(MAX_ATTEMPTS)
+
+    with pytest.raises(AirwallexTransientError):
+        service.approve("C")  # outcome unknown: Airwallex may have made the charge
+    service.approve("C")
+
+    charge_keys = fake.calls[-(MAX_ATTEMPTS + 1) :]
+    assert len(set(charge_keys)) == 1  # so Airwallex dedupes instead of charging twice
 
 
 def test_assess_detailed_returns_the_memo_of_an_applied_change() -> None:

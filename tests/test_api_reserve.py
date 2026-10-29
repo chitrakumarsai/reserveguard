@@ -149,7 +149,7 @@ def test_unsettled_payment_is_a_502_that_says_whether_money_moved(
     }
 
 
-@pytest.mark.parametrize("method", ["assess_detailed", "approve"])
+@pytest.mark.parametrize("method", ["assess_detailed", "approve", "reconciliation"])
 def test_provider_errors_map_to_502(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, method: str
 ) -> None:
@@ -157,12 +157,13 @@ def test_provider_errors_map_to_502(
         raise AirwallexTransientError("sandbox down")
 
     monkeypatch.setattr(client.app.state.service, method, fail)  # type: ignore[attr-defined]
+    calls = {
+        "assess_detailed": lambda: _assess(client, "C", RISK_EVIDENCE),
+        "approve": lambda: client.post("/sellers/C/approve"),
+        "reconciliation": lambda: client.get("/reconciliation"),
+    }
 
-    response = (
-        _assess(client, "C", RISK_EVIDENCE)
-        if method == "assess_detailed"
-        else client.post("/sellers/C/approve")
-    )
+    response = calls[method]()
 
     assert response.status_code == 502
     assert "sandbox down" not in response.text  # provider details stay server-side

@@ -56,37 +56,6 @@ def test_refuses_non_sandbox_base_url() -> None:
         SandboxAdmin(RestAirwallexClient(settings))
 
 
-def test_reuses_existing_global_account(api: respx.MockRouter, admin: SandboxAdmin) -> None:
-    api.get("/api/v1/global_accounts").respond(
-        200,
-        json={
-            "items": [
-                {"id": "ga_eur", "status": "ACTIVE", "required_features": [{"currency": "EUR"}]},
-                {"id": "ga_usd", "status": "ACTIVE", "required_features": [{"currency": "USD"}]},
-            ]
-        },
-    )
-    create = api.post("/api/v1/global_accounts/create")
-    assert admin.ensure_global_account("USD", "US") == "ga_usd"
-    assert create.call_count == 0
-
-
-def test_creates_global_account_when_missing(api: respx.MockRouter, admin: SandboxAdmin) -> None:
-    api.get("/api/v1/global_accounts").respond(200, json={"items": []})
-    create = api.post("/api/v1/global_accounts/create").respond(201, json={"id": "ga_new"})
-    assert admin.ensure_global_account("USD", "US") == "ga_new"
-    body = json.loads(create.calls[0].request.content)
-    assert body["required_features"] == [{"currency": "USD", "transfer_method": "LOCAL"}]
-    assert body["country_code"] == "US" and body["request_id"]
-
-
-def test_simulate_deposit_sends_major_units(api: respx.MockRouter, admin: SandboxAdmin) -> None:
-    route = api.post("/api/v1/simulation/deposit/create").respond(201, json={"id": "dep_1"})
-    assert admin.simulate_deposit("ga_usd", 1_000_000, "USD") == "dep_1"
-    body = json.loads(route.calls[0].request.content)
-    assert body["amount"] == 10000.0 and body["global_account_id"] == "ga_usd"
-
-
 def test_onboard_seller_runs_create_submit_activate(
     api: respx.MockRouter, admin: SandboxAdmin
 ) -> None:

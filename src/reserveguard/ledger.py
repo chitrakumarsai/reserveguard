@@ -38,9 +38,6 @@ class Ledger:
     def record(self, entry: LedgerEntry) -> "Ledger":
         return Ledger(entries=(*self.entries, entry))
 
-    def merge(self, other: "Ledger") -> "Ledger":
-        return Ledger(entries=(*self.entries, *other.entries))
-
     def seller_ids(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(e.seller_id for e in self.entries))
 

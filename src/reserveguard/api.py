@@ -378,10 +378,11 @@ def create_app(
 
     @app.get("/reconciliation", response_model=list[CheckOut], dependencies=Authorized)
     def reconciliation(service: ServiceDep) -> list[CheckOut]:
-        return [
-            CheckOut(name=c.name, passed=c.passed, detail=c.detail)
-            for c in service.reconciliation()
-        ]
+        try:
+            checks = service.reconciliation()
+        except AirwallexError as exc:
+            raise provider_failure(exc) from exc
+        return [CheckOut(name=c.name, passed=c.passed, detail=c.detail) for c in checks]
 
     return app
 

@@ -58,6 +58,7 @@ class SqliteStore:
                 (str(SCHEMA_VERSION),),
             )
             version = int(self._meta(conn)["schema_version"])
+            self._rows = self._count(conn)
         if version != SCHEMA_VERSION:
             raise StoreError(f"{path} has schema version {version}, expected {SCHEMA_VERSION}")
 
@@ -71,6 +72,7 @@ class SqliteStore:
                 "SELECT seller_id, kind, amount_cents, reference, object_id"
                 " FROM ledger_entries ORDER BY seq"
             ).fetchall()
+            self._rows = len(rows)
             state_row = conn.execute("SELECT json FROM service_state WHERE id = 1").fetchone()
         entries = tuple(
             LedgerEntry(
@@ -92,7 +94,12 @@ class SqliteStore:
     def save(self, snapshot: Snapshot) -> None:
         """Write the snapshot atomically. Ledger rows are only ever appended."""
         with self._transaction() as conn:
-            (stored,) = conn.execute("SELECT COUNT(*) FROM ledger_entries").fetchone()
+            stored = self._count(conn)
+            if stored != self._rows:
+                raise StoreError(
+                    "refusing to save: the ledger changed on disk since it was loaded"
+                    " (is another process using it?)"
+                )
             if stored > len(snapshot.entries):
                 raise StoreError("refusing to save: the ledger would lose entries")
             conn.executemany(
@@ -114,6 +121,7 @@ class SqliteStore:
                 "INSERT OR REPLACE INTO service_state (id, json) VALUES (1, ?)",
                 (json.dumps(snapshot.state, sort_keys=True),),
             )
+        self._rows = len(snapshot.entries)
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
@@ -121,6 +129,11 @@ class SqliteStore:
             conn.execute("PRAGMA journal_mode=WAL")
             with conn:  # commits on success, rolls back on any error
                 yield conn
+
+    @staticmethod
+    def _count(conn: sqlite3.Connection) -> int:
+        (rows,) = conn.execute("SELECT COUNT(*) FROM ledger_entries").fetchone()
+        return int(rows)
 
     @staticmethod
     def _meta(conn: sqlite3.Connection) -> dict[str, str]:

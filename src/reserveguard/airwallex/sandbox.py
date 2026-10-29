@@ -1,18 +1,16 @@
-"""Sandbox-only setup: fund the platform, onboard connected sellers, pull platform reports.
+"""Sandbox-only setup: onboard connected sellers, pull platform reports.
 
 These are not part of AirwallexClient: they are operator/setup actions, never called by
 settlement logic or the LLM.
 """
 
 import time
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from reserveguard.airwallex.client import AirwallexAPIError
-from reserveguard.airwallex.money import to_major
 from reserveguard.airwallex.rest import API, RestAirwallexClient
 
 REPORT_TYPES = frozenset(
@@ -146,37 +144,6 @@ class SandboxAdmin:
             raise ValueError("SandboxAdmin only runs against the Airwallex sandbox")
         self._client = client
         self._sleep = sleep
-
-    def ensure_global_account(self, currency: str, country_code: str) -> str:
-        """Reuse an ACTIVE global account in ``currency``; create one only if none exists."""
-        data = self._client.request("GET", f"{API}/global_accounts")
-        for item in data.get("items", []):
-            features = [*item.get("required_features", []), *item.get("supported_features", [])]
-            currencies = {f.get("currency") for f in features}
-            if item.get("status") == "ACTIVE" and currency in currencies:
-                return str(item["id"])
-        created = self._client.request(
-            "POST",
-            f"{API}/global_accounts/create",
-            json={
-                "country_code": country_code,
-                "request_id": str(uuid.uuid4()),
-                "required_features": [{"currency": currency, "transfer_method": "LOCAL"}],
-            },
-        )
-        return str(created["id"])
-
-    def simulate_deposit(self, global_account_id: str, amount_cents: int, currency: str) -> str:
-        """POST /simulation/deposit/create: funds the platform wallet (PENDING, posts at once)."""
-        body = {
-            "global_account_id": global_account_id,
-            # This endpoint documents a JSON number; the string is exact so float() is too.
-            "amount": float(to_major(amount_cents, currency)),
-            "reference": "ReserveGuard sandbox funding",
-        }
-        return str(
-            self._client.request("POST", f"{API}/simulation/deposit/create", json=body)["id"]
-        )
 
     def onboard_seller(self, spec: ConnectedAccountSpec) -> str:
         """create -> submit -> simulate ACTIVE -> confirm. Returns the connected account id."""
