@@ -197,6 +197,10 @@ The scenario then continues for Seller C:
 
 All reconciliation checks pass at every step.
 
+If C's next cycle settled while it still owed the $300, ReserveGuard would keep $300 of that
+payout back as reserve and transfer the rest. A payout smaller than the debt is kept back in
+full, and the remainder waits for the following cycle. Only C's own payout ever repays C's debt.
+
 ## Project structure
 
 ```

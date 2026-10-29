@@ -72,6 +72,13 @@ def test_release_and_debt_cancel() -> None:
     assert (totals.held_cents, totals.debt_cents, totals.released_cents) == (60_000, 0, 30_000)
 
 
+def test_collected_debt_is_no_longer_owed() -> None:
+    ledger = _settled("C", 400_000, 40_000, 40_000)
+    for kind, cents in [(EntryKind.DEBT, 30_000), (EntryKind.DEBT_COLLECTED, 20_000)]:
+        ledger = ledger.record(_entry("C", kind, cents))
+    assert ledger.totals("C").debt_cents == 10_000
+
+
 def test_all_checks_pass_for_consistent_state() -> None:
     ledger = _two_sellers()
     results = run_checks(ledger, platform_balance_cents=105_000)

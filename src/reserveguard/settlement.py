@@ -70,6 +70,7 @@ class SettlementLine(BaseModel):
     reserve_cents: int
     payout_cents: int
     transfer_id: str | None
+    debt_collected_cents: int = 0  # absent in cycles settled before debt was collected
 
 
 @dataclass(frozen=True)
@@ -302,7 +303,10 @@ class SettlementService:
 
     def _settle_one(self, state: _SellerState, gross_cents: int, cycle_id: str) -> SettlementLine:
         seller = state.seller
-        b = settle_gross(gross_cents, state.rate_bps)
+        # Only this seller's own debt is netted against this seller's own payout.
+        b = settle_gross(
+            gross_cents, state.rate_bps, self._ledger.totals(seller.seller_id).debt_cents
+        )
         ref = f"settle:{cycle_id}:{seller.seller_id}"
         # The amount is part of the key: the same cycle with a different amount is a new payout.
         key = self._key(f"payout:{cycle_id}:{seller.seller_id}:{b.payout_cents}")
@@ -321,6 +325,10 @@ class SettlementService:
             (EntryKind.RESERVE_HOLD, b.reserve_cents),
         ]:
             self._record(seller.seller_id, kind, cents, ref, None)
+        if b.debt_collected_cents > 0:
+            # Kept back from the payout, the money funds the reserve the debt stood for.
+            for kind in (EntryKind.RESERVE_HOLD, EntryKind.DEBT_COLLECTED):
+                self._record(seller.seller_id, kind, b.debt_collected_cents, ref, None)
         self._record(seller.seller_id, EntryKind.PAYOUT, b.payout_cents, ref, transfer_id)
         # A pending decision was sized on the old gross; drop it so the next assess re-proposes.
         self._states[seller.seller_id] = replace(
@@ -334,6 +342,7 @@ class SettlementService:
             reserve_cents=b.reserve_cents,
             payout_cents=b.payout_cents,
             transfer_id=transfer_id,
+            debt_collected_cents=b.debt_collected_cents,
         )
 
     def _apply(

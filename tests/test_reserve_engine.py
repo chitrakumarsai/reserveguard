@@ -71,6 +71,8 @@ def test_settle_gross_matches_demo_table(
 def test_settle_gross_rejects_negative() -> None:
     with pytest.raises(ValueError, match="gross"):
         settle_gross(-1, 1000)
+    with pytest.raises(ValueError, match="debt"):
+        settle_gross(100, 1000, debt_cents=-1)
 
 
 def test_large_increase_needs_approval() -> None:

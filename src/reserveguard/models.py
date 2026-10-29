@@ -29,6 +29,7 @@ class EntryKind(StrEnum):
     RELEASE = "release"
     DEBT = "debt"
     DEBT_CANCEL = "debt_cancel"
+    DEBT_COLLECTED = "debt_collected"
 
 
 @dataclass(frozen=True)

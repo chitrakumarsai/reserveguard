@@ -56,7 +56,9 @@ class Ledger:
             charges_cents=sums[EntryKind.CHARGE],
             refunds_cents=sums[EntryKind.REFUND],
             released_cents=sums[EntryKind.RELEASE],
-            debt_cents=sums[EntryKind.DEBT] - sums[EntryKind.DEBT_CANCEL],
+            debt_cents=sums[EntryKind.DEBT]
+            - sums[EntryKind.DEBT_CANCEL]
+            - sums[EntryKind.DEBT_COLLECTED],
         )
 
 

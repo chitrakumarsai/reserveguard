@@ -25,6 +25,7 @@ class SettlementBreakdown:
     rate_bps: int
     reserve_cents: int
     payout_cents: int
+    debt_collected_cents: int = 0
 
 
 @dataclass(frozen=True)
@@ -116,17 +117,22 @@ def reserve_for(gross_cents: int, rate_bps: int) -> int:
     return _apply_bps(gross_cents, rate_bps)
 
 
-def settle_gross(gross_cents: int, rate_bps: int) -> SettlementBreakdown:
+def settle_gross(gross_cents: int, rate_bps: int, debt_cents: int = 0) -> SettlementBreakdown:
+    """The seller's reserve debt is repaid from this payout first, up to the whole payout."""
     if gross_cents < 0:
         raise ValueError(f"gross_cents must be >= 0, got {gross_cents}")
+    if debt_cents < 0:
+        raise ValueError(f"debt_cents must be >= 0, got {debt_cents}")
     fee = _apply_bps(gross_cents, PLATFORM_FEE_BPS)
     reserve = reserve_for(gross_cents, rate_bps)
+    collected = min(debt_cents, gross_cents - fee - reserve)
     return SettlementBreakdown(
         gross_cents=gross_cents,
         fee_cents=fee,
         rate_bps=rate_bps,
         reserve_cents=reserve,
-        payout_cents=gross_cents - fee - reserve,
+        payout_cents=gross_cents - fee - reserve - collected,
+        debt_collected_cents=collected,
     )
 
 

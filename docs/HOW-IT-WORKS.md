@@ -129,10 +129,10 @@ account has changed.
 **What happens if the seller can't cover a higher reserve?**
 We first try to charge the gap from the seller's Airwallex wallet. If their wallet is short,
 the rest is recorded as debt the seller owes. When their reserve later comes down, that debt is
-cancelled first, and only what's left over is released back to them. We don't yet take the
-debt out of the seller's future payouts. It's collected only if a later reassessment finds money
-in their wallet, or cancelled when the reserve comes down. Netting it against payouts is the
-next step.
+cancelled first, and only what's left over is released back to them. Until then, the debt is
+taken out of the seller's own next payouts: that money stays in their reserve instead of being
+transferred, and if one payout doesn't cover the debt, the next one continues. A later
+reassessment can also charge it from their wallet.
 
 **Why are A and B overridden instead of using their real age?**
 The sandbox accounts were all created a few days ago, so the age rule would put everyone at the
