@@ -32,7 +32,7 @@ export function Questions() {
     <section className="section" id="questions" aria-labelledby="questions-h">
       <div className="wrap">
         <div className="grid grid--top">
-          <div className="span-5 stack-4">
+          <div className="span-6 stack-4">
             <h2 id="questions-h">Questions</h2>
             <p className="muted">What marketplace finance and risk teams ask first.</p>
             <a className="link" href={QUESTION_HREF}>

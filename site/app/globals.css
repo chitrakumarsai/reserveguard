@@ -28,6 +28,7 @@
 /* The card group's one panel height (features-2x2): lower where the two rows must fit 768px and phone screens. */
 #rates .panel { --p-h: 336px; }
 @media (min-width: 1024px) and (max-width: 1279px) { #rates .panel { --p-h: 300px; } }
+@media (min-width: 640px) and (max-width: 1023px) { #rates .panel { --p-h: clamp(300px, calc(100svh - 540px), 560px); } }
 
 /* Under 640 the bar holds the logo and the menu; the hero's full-width button carries the main action. */
 @media (max-width: 639px) {
@@ -36,9 +37,9 @@
 }
 
 /* The hub diagram fills its lit frame; a tablet caps it, a phone stacks it as the second screen. */
-#integrations .frame--lit { min-height: 480px; display: flex; overflow: hidden; }
+#integrations .frame--lit { min-height: max(480px, calc(100svh - var(--padt) - var(--padb))); display: flex; overflow: hidden; }
 #integrations .frame--lit > .dg { flex: 1 1 auto; }
-@media (min-width: 640px) and (max-width: 1023px) { #integrations .frame--lit { min-height: 0; height: 340px; } }
+@media (min-width: 640px) and (max-width: 1023px) { #integrations .frame--lit { min-height: 0; height: clamp(280px, calc(100svh - 700px), 520px); } }
 @media (max-width: 639px) { #integrations { --hm: 2; } #integrations .frame--lit { min-height: 560px; } }
 
 .console-intro { margin: 0; }
@@ -90,6 +91,16 @@
 
 /* Footer column labels are h3 (they follow the close's h2); the kit styles them as h4. */
 .footer h3 { font: 500 var(--t-small)/1.4 var(--font-text); letter-spacing: 0; color: var(--muted); margin-bottom: var(--s-4); }
+
+/* Readability (consistency check): body copy in the ink, mock-up labels at 4.5:1 or more,
+   and the secondary button outlined in the ink so it stands off the page. */
+#rates .card > p, .console-intro { color: var(--ink); }
+.ui { --u-muted: var(--muted); }
+html[data-buttons="pill"] .btn--secondary { border-color: var(--ink); }
+
+/* Questions fits its one screen. */
+#questions .faq > .faq__item { padding-block: var(--s-4); }
+#questions .faq > .faq__item:first-child { padding-top: 0; }
 
 /* Small legal pages. */
 .legal { padding-top: calc(var(--nav) + var(--s-9)); padding-bottom: var(--s-9); }

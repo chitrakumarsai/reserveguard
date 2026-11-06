@@ -7,9 +7,8 @@ export function Hero() {
     <section className="hero hero--split" aria-labelledby="hero-h">
       <div className="wrap">
         <div className="hero-text grid hero__grid">
-          <div className="hero__text span-5">
+          <div className="hero__text span-6">
             <p className="hero__kicker">
-              <span className="dot" aria-hidden="true" />
               Reserve rates capped at {RATE_CAP} per seller
             </p>
             <h1 id="hero-h">Seller reserves for Airwallex marketplaces</h1>

@@ -1,11 +1,11 @@
 import { Arrow, Logo } from "./Arrow";
-import { MAIN_ACTION } from "@/lib/site";
+import { MAIN_ACTION, QUESTION_HREF } from "@/lib/site";
 
 // footer.closing: close-type (row 1) and footer-columns (row 2), one screen.
 const COLUMNS = [
   { heading: "Product", links: [{ label: "Console", href: "#console" }, { label: "Rates", href: "#rates" }] },
   { heading: "Platform", links: [{ label: "Integrations", href: "#integrations" }] },
-  { heading: "Help", links: [{ label: "Questions", href: "#questions" }, { label: "Contact", href: "#contact" }] },
+  { heading: "Help", links: [{ label: "Questions", href: "#questions" }, { label: "Contact", href: QUESTION_HREF }] },
 ] as const;
 
 export function Footer() {
@@ -25,12 +25,12 @@ export function Footer() {
         </div>
         <div className="closing__links">
           <div className="grid">
-            <div className="span-4 stack-4">
+            <div className="span-3 stack-4">
               <Logo />
               <p className="footer__lede">Seller reserves on Airwallex.</p>
             </div>
             {COLUMNS.map((col) => (
-              <div className="span-2 footer__col" key={col.heading}>
+              <div className="span-3 footer__col" key={col.heading}>
                 <h3>{col.heading}</h3>
                 <ul>
                   {col.links.map((link) => (
@@ -44,7 +44,6 @@ export function Footer() {
             <span>
               &copy; {year} ReserveGuard &nbsp; <a href="/privacy/">Privacy</a> &nbsp; <a href="/terms/">Terms</a>
             </span>
-            <div className="socials" />
             <span>Product names and logos are trademarks of their owners.</span>
           </div>
         </div>

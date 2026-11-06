@@ -100,8 +100,8 @@ export function ConsoleFrame() {
     <section className="section" id="console" aria-labelledby="console-h">
       <div className="wrap">
         <div className="grid">
-          <h2 id="console-h" className="span-5">Every reserve decision, with its evidence</h2>
-          <p className="span-6 start-7 muted console-intro">
+          <h2 id="console-h" className="span-6">Every reserve decision, with its evidence</h2>
+          <p className="span-6 start-7 console-intro">
             The activity log lists each payout, hold and re-rate by seller. Open one to read its memo: the new
             rate, the evidence it cites and whether ops must approve. <a className="link" href="#rates">See how rates are set</a>
           </p>

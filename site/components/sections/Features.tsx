@@ -26,12 +26,12 @@ const BARS = Array.from({ length: 14 }, (_, i) => {
 const PAYOUT_LANES = {
   layout: "lanes",
   alt: "One settlement cycle goes to ReserveGuard, which pays Seller A, Seller B and Seller C to their own connected accounts.",
-  input: { label: "Settlement cycle", icon: "ui:landmark", sub: "$10,000.00 gross" },
+  input: { label: "Settlement cycle", icon: "ui:landmark", sub: "$10,000.00 gross", kindCompact: "pill" },
   core: { label: "ReserveGuard", icon: "ui:shield-check" },
   lanes: [
-    { label: "Seller A", icon: "ui:wallet", done: true, sub: "$2,550.00 paid" },
-    { label: "Seller B", icon: "ui:wallet", done: true, sub: "$2,400.00 paid" },
-    { label: "Seller C", icon: "ui:wallet", done: true, sub: "$3,000.00 paid" },
+    { label: "Seller A", icon: "ui:wallet", done: true, sub: "$2,550.00 paid", kindCompact: "pill" },
+    { label: "Seller B", icon: "ui:wallet", done: true, sub: "$2,400.00 paid", kindCompact: "pill" },
+    { label: "Seller C", icon: "ui:wallet", done: true, sub: "$3,000.00 paid", kindCompact: "pill" },
   ],
 };
 
@@ -110,15 +110,10 @@ function ShortfallNotes() {
             <li className="ui-note">
               <span className="ui-agent ui-note__av" aria-hidden="true" />
               <span className="ui-note__text"><span className="ui-note__title">$500.00 charged from Seller C<time>now</time></span><span className="ui-note__body">The wallet held $500.00 of $800.00</span></span>
-              <span className="ui-btn ui-btn--sm ui-note__btn">Open</span>
             </li>
             <li className="ui-note">
               <span className="ui-avatar ui-note__av" data-tone="2">C</span>
               <span className="ui-note__text"><span className="ui-note__title">$300.00 recorded as debt<time>now</time></span><span className="ui-note__body">Collected from Seller C&rsquo;s next payouts</span></span>
-            </li>
-            <li className="ui-note">
-              <span className="ui-note__ico"><svg className="ui-icon" viewBox="0 0 16 16"><path d="m3.5 8.4 2.8 2.8 6.2-6.4" /></svg></span>
-              <span className="ui-note__text"><span className="ui-note__title">Debt cleared<time>2d</time></span><span className="ui-note__body">Deliveries confirmed, rate down to 20%</span></span>
             </li>
           </ul>
         </div>
@@ -151,7 +146,7 @@ export function Features() {
             <ShortfallNotes />
           </Card>
           <Card title="Pays each seller separately" body="Net proceeds go to each seller's own Airwallex connected account. One seller's funds never cover another's.">
-            <div className="dg" data-diagram={JSON.stringify(PAYOUT_LANES)} />
+            <div className="dg" data-dg-still data-diagram={JSON.stringify(PAYOUT_LANES)} />
           </Card>
         </div>
       </div>

@@ -1,4 +1,4 @@
-// split-text-left: the words on span-5, the hub diagram of the real tools on span-6 start-7 (the page's split).
+// split-text-left: the words on span-6, the hub diagram of the real tools on span-6 start-7 (the page's split).
 // Airwallex has no logo in the kit's permitted icon sets, so it is named in type with a plain glyph.
 const STACK_HUB = {
   layout: "hub",
@@ -24,7 +24,7 @@ export function Integrations() {
     <section className="section" id="integrations" aria-labelledby="integrations-h">
       <div className="wrap">
         <div className="grid grid--top fill">
-          <div className="span-5 stack-6">
+          <div className="span-6 stack-6">
             <h2 id="integrations-h">Built on Airwallex and Claude</h2>
             <p className="measure">
               Every payout, hold and charge goes through Airwallex. Claude only reads the evidence and writes the
@@ -40,7 +40,7 @@ export function Integrations() {
             </ul>
           </div>
           <div className="frame frame--lit span-6 start-7" data-visual>
-            <div className="dg" data-diagram={JSON.stringify(STACK_HUB)} />
+            <div className="dg" data-dg-still data-diagram={JSON.stringify(STACK_HUB)} />
           </div>
         </div>
       </div>
