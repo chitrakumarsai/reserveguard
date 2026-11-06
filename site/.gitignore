@@ -5,3 +5,4 @@ next-env.d.ts
 *.tsbuildinfo
 .taste-skill/profile*/
 shots/
+.tmp/

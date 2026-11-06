@@ -31,7 +31,7 @@ export function Footer() {
             </div>
             {COLUMNS.map((col) => (
               <div className="span-2 footer__col" key={col.heading}>
-                <h4>{col.heading}</h4>
+                <h3>{col.heading}</h3>
                 <ul>
                   {col.links.map((link) => (
                     <li key={link.href}><a href={link.href}>{link.label}</a></li>

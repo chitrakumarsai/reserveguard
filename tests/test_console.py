@@ -1,5 +1,7 @@
 """The ops console: a static page over the same authenticated API."""
 
+import base64
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -59,6 +61,40 @@ def test_root_address_serves_the_built_website(tmp_path: Path) -> None:
     assert client.get("/health").status_code == 200
     assert "console.js" in client.get("/console").text
     assert client.get("/sellers", headers=_auth()).status_code == 200
+
+
+def test_website_pages_get_a_strict_csp_that_allows_only_their_own_inline_scripts(
+    tmp_path: Path,
+) -> None:
+    inline = "self.__next_f.push([1])"
+    (tmp_path / "index.html").write_text(f"<h1>Home</h1><script>{inline}</script>")
+    client = _app_with_site(tmp_path)
+    digest = base64.b64encode(hashlib.sha256(inline.encode()).digest()).decode()
+
+    response = client.get("/")
+
+    csp = response.headers["content-security-policy"]
+    script_src = csp.split("script-src")[1].split(";")[0]
+    assert f"'sha256-{digest}'" in script_src
+    assert "unsafe-inline" not in script_src
+    assert "frame-ancestors 'none'" in csp
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    # The console keeps its own, stricter policy.
+    console_csp = client.get("/console").headers["content-security-policy"]
+    assert "sha256-" not in console_csp
+
+
+def test_large_responses_are_compressed(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<p>reserve</p>" * 500)
+    client = _app_with_site(tmp_path)
+
+    page = client.get("/", headers={"Accept-Encoding": "gzip"})
+    script = client.get("/console/static/console.js", headers={"Accept-Encoding": "gzip"})
+
+    assert page.headers["content-encoding"] == "gzip"
+    assert script.headers["content-encoding"] == "gzip"
+    assert "<p>reserve</p>" in page.text  # the client decodes it back
 
 
 def test_root_address_opens_the_console_without_a_built_website(tmp_path: Path) -> None:

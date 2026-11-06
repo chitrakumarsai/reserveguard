@@ -88,6 +88,9 @@
 }
 
 
+/* Footer column labels are h3 (they follow the close's h2); the kit styles them as h4. */
+.footer h3 { font: 500 var(--t-small)/1.4 var(--font-text); letter-spacing: 0; color: var(--muted); margin-bottom: var(--s-4); }
+
 /* Small legal pages. */
 .legal { padding-top: calc(var(--nav) + var(--s-9)); padding-bottom: var(--s-9); }
 .legal h1 { font-size: var(--t-h2); }

@@ -5,6 +5,9 @@ real (sandbox) money for the sellers in data/sandbox_sellers.json. Every endpoin
 /health needs ``Authorization: Bearer <RESERVEGUARD_API_TOKEN>``.
 """
 
+import base64
+import hashlib
+import re
 import secrets
 import threading
 import time
@@ -14,6 +17,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
@@ -53,6 +57,37 @@ CONSOLE_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
 }
+# Inline <script> bodies (no src=) in the built website; each one is allowed by its hash.
+INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
+
+
+def site_headers(site_dir: Path) -> dict[str, str]:
+    """Headers for the built website. Next.js pages carry small inline scripts, so the CSP
+    allows exactly those by hash (read once at startup) and no other inline script. Styles
+    stay 'unsafe-inline': the design kit sets style="" attributes, which hashes can't cover."""
+    if not site_dir.is_dir():
+        return {}
+    hashes = sorted(
+        "'sha256-" + base64.b64encode(hashlib.sha256(body.encode()).digest()).decode() + "'"
+        for page in site_dir.rglob("*.html")
+        for body in set(INLINE_SCRIPT.findall(page.read_text(encoding="utf-8")))
+        if body.strip()
+    )
+    csp = (
+        f"default-src 'none'; script-src 'self' {' '.join(dict.fromkeys(hashes))}; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+    return {
+        "Content-Security-Policy": csp,
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "X-Frame-Options": "DENY",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    }
+
+
 # /assess may call Claude, so it is capped per process: this many calls per window.
 ASSESS_RATE_LIMIT = 10
 ASSESS_RATE_WINDOW_S = 60.0
@@ -232,12 +267,18 @@ def create_app(
         return {"status": "ok"}
 
     app.mount("/console/static", StaticFiles(directory=CONSOLE_DIR), name="console-static")
+    # The website's scripts and styles shrink to about a quarter; tiny API replies stay as-is.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+    website_headers = site_headers(settings.reserveguard_site_dir)
 
     @app.middleware("http")
-    async def console_headers(request: Request, call_next: Callable[..., Any]) -> Response:
+    async def security_headers(request: Request, call_next: Callable[..., Any]) -> Response:
         response: Response = await call_next(request)
         if request.url.path.startswith("/console"):
             response.headers.update(CONSOLE_HEADERS)
+        else:
+            response.headers.update(website_headers)
         return response
 
     @app.get("/console", include_in_schema=False)

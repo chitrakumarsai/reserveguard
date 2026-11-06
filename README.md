@@ -148,6 +148,12 @@ npm run build    # static files in site/out/, served by the API server at /
 npm run dev      # optional: edit the site with live reload at http://localhost:3100
 ```
 
+**After every `npm run build`, restart the API server.** It reads the built pages once at startup
+and allows only their exact inline scripts in the website's Content-Security-Policy (by SHA-256
+hash), so a rebuilt page's new scripts are blocked until the restart. Website pages also get
+`nosniff`, `X-Frame-Options: DENY`, a referrer policy and a permissions policy; responses over
+1 KB are gzip-compressed.
+
 `RESERVEGUARD_SITE_DIR` (default `site/out`) points the server elsewhere. On `npm run dev`, and on
 any static host without the API, **Request a demo** has no console to open.
 
