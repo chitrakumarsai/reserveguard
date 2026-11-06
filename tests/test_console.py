@@ -1,5 +1,7 @@
 """The ops console: a static page over the same authenticated API."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -33,6 +35,39 @@ def test_console_page_is_served_with_a_strict_csp(client: TestClient) -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert "<script" in response.text and "console.js" in response.text
     assert TOKEN not in response.text
+
+
+def _app_with_site(site_dir: Path) -> TestClient:
+    settings = Settings(
+        use_fake_airwallex=True,
+        use_llm=False,
+        reserveguard_api_token=TOKEN,
+        reserveguard_site_dir=site_dir,
+    )
+    return TestClient(create_app(settings))
+
+
+def test_root_address_serves_the_built_website(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<h1>ReserveGuard home</h1>")
+    (tmp_path / "privacy").mkdir()
+    (tmp_path / "privacy" / "index.html").write_text("<h1>Privacy</h1>")
+    client = _app_with_site(tmp_path)
+
+    assert "ReserveGuard home" in client.get("/").text
+    assert "Privacy" in client.get("/privacy/").text
+    # The API and the console still win over the website.
+    assert client.get("/health").status_code == 200
+    assert "console.js" in client.get("/console").text
+    assert client.get("/sellers", headers=_auth()).status_code == 200
+
+
+def test_root_address_opens_the_console_without_a_built_website(tmp_path: Path) -> None:
+    client = _app_with_site(tmp_path / "not-built")
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/console"
 
 
 @pytest.mark.parametrize("asset", ["console.js", "console.css"])

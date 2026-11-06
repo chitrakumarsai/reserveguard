@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, NonNegativeInt
@@ -386,7 +386,20 @@ def create_app(
             raise provider_failure(exc) from exc
         return [CheckOut(name=c.name, passed=c.passed, detail=c.detail) for c in checks]
 
+    _serve_home(app, settings.reserveguard_site_dir)
     return app
+
+
+def _serve_home(app: FastAPI, site_dir: Path) -> None:
+    """The bare address shows the built website; without one, it opens the console."""
+    if site_dir.is_dir():
+        # Mounted last, so every API and console route above still wins.
+        app.mount("/", StaticFiles(directory=site_dir, html=True), name="site")
+        return
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse("/console")
 
 
 app = create_app()

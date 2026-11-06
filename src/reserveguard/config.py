@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     llm_model: str = DEFAULT_LLM_MODEL
     # Live mode keeps its ledger here so a restart loses nothing (fake mode stays in memory).
     reserveguard_db_path: Path = Path("data/reserveguard.db")
+    # The built marketing website (site/out); served at / when present, else / opens the console.
+    reserveguard_site_dir: Path = Path("site/out")
 
 
 @lru_cache

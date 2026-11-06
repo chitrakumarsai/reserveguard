@@ -74,8 +74,53 @@ it is a scripted scenario. Run one server process at a time.
 
 ### Ops console
 
-Open **http://127.0.0.1:8000/console** and enter the API token. The token is kept only in that
-browser tab. From the console an operator can:
+To run it:
+
+1. In `.env`, set `RESERVEGUARD_API_TOKEN` (any long random string; this is the console's
+   password) and choose the money backend:
+   - `USE_FAKE_AIRWALLEX=true`: in-memory fake, no Airwallex calls. Good for practice.
+   - `USE_FAKE_AIRWALLEX=false`: the Airwallex account behind `AIRWALLEX_CLIENT_ID`,
+     `AIRWALLEX_API_KEY` and `AIRWALLEX_BASE_URL` (the sandbox by default). Run
+     `uv run python scripts/sandbox_setup.py` once first to onboard sellers A, B and C.
+   - `USE_LLM=true` with `ANTHROPIC_API_KEY` to let Claude read evidence; otherwise keyword rules.
+2. Start the server and leave the terminal open:
+   ```bash
+   uv run uvicorn reserveguard.api:app --port 8000
+   ```
+   Variables exported in your shell override `.env`. If an old `AIRWALLEX_*` or
+   `ANTHROPIC_API_KEY` is exported, unset it or prefix the command with
+   `env -u AIRWALLEX_API_KEY -u AIRWALLEX_CLIENT_ID -u AIRWALLEX_BASE_URL -u ANTHROPIC_API_KEY`.
+3. Open **http://127.0.0.1:8000**. It shows the ReserveGuard home page. Click **Request a
+   demo** to open the console (`/console`), enter the token and click **Connect**. The token is
+   kept only in that browser tab. The home page appears only once the website is built (see
+   [Marketing website](#marketing-website)); without it, the address opens the console directly.
+4. Walk through a cycle:
+   1. **Run settlement cycle**, then **Pay out**: fee taken, reserves held, the rest paid out.
+   2. Pick **Seller C**, click **Sample: complaints**, then **Assess seller**: the rate rises
+      and a charge waits for you.
+   3. **Approve** twice (approve, then confirm). Nothing moves before the second click.
+   4. **Sample: deliveries**, **Assess seller**, **Approve** twice: the rate falls and part of
+      the reserve is released.
+   5. **Re-run checks**: every reconciliation check should be green.
+5. Stop the server with `Ctrl+C`.
+
+The sample buttons load made-up evidence. Against a real (non-sandbox) Airwallex account, enter
+real sales and real evidence only.
+
+**Lost the API token?** The server never shows it: not in the console, not through the API. It
+is wherever you set it when you started the server:
+
+- In `.env`: print it from the project folder with `grep RESERVEGUARD_API_TOKEN .env`.
+- On the start command (`RESERVEGUARD_API_TOKEN=... uv run uvicorn ...`): find that command in
+  your shell history with `history | grep RESERVEGUARD_API_TOKEN`.
+
+If you can't find it, set a new one: generate it with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`, put it in `.env` (or on the start
+command), stop the server with `Ctrl+C` and start it again. The old token stops working, and
+nothing else is lost: in live mode the ledger and sellers are kept in `RESERVEGUARD_DB_PATH`.
+In the console, click **Sign out** (or reload the page) to enter the new token.
+
+From the console an operator can:
 
 - run a settlement cycle;
 - paste evidence or load the samples, then assess a seller;
@@ -89,6 +134,22 @@ browser tab. From the console an operator can:
 The page is static HTML, CSS and JS with no build step. It uses the same authenticated
 endpoints (`/sellers/{id}/explain`, `/sellers/{id}/pending`, `/sellers/{id}/statement`). It is
 served with a strict Content-Security-Policy and writes every value as text, never as HTML.
+
+### Marketing website
+
+`site/` is the public website (Next.js static export). Build it once and the API server shows it
+at `/`, with **Request a demo** opening the console on the same server. Its **Console** link in
+the top bar only scrolls to the console screenshot on the page. It needs Node 20 or newer:
+
+```bash
+cd site
+npm install      # first time only
+npm run build    # static files in site/out/, served by the API server at /
+npm run dev      # optional: edit the site with live reload at http://localhost:3100
+```
+
+`RESERVEGUARD_SITE_DIR` (default `site/out`) points the server elsewhere. On `npm run dev`, and on
+any static host without the API, **Request a demo** has no console to open.
 
 
 ## Developing with Claude Code + ECC
