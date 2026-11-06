@@ -13,7 +13,11 @@ from pathlib import Path
 
 import httpx
 
-from reserveguard.agent.evidence import classify_evidence, load_evidence
+from reserveguard.agent.evidence import (
+    classify_evidence,
+    classify_evidence_with_source,
+    load_evidence,
+)
 from reserveguard.agent.tools import format_pct, format_usd
 from reserveguard.airwallex.client import AirwallexClient, AirwallexError
 from reserveguard.airwallex.fake import FakeAirwallexClient
@@ -175,9 +179,9 @@ def main() -> int:
     ok &= reconcile(service, client)
 
     heading("Step 1: new risk evidence for Seller C")
-    classifier = f"Claude ({settings.llm_model})" if settings.use_llm else "keyword rules"
+    signals, source = classify_evidence_with_source(load_evidence(SAMPLE_EVIDENCE_PATH), settings)
+    classifier = f"Claude ({settings.llm_model})" if source == "claude" else "keyword rules"
     print(f"Classifier: {classifier}")
-    signals = classify_evidence(load_evidence(SAMPLE_EVIDENCE_PATH), settings)
     for s in signals:
         print(f"  signal {s.kind.value} (+{s.weight_bps} bps) from {', '.join(s.evidence_ids)}")
     print_decision(service.assess(SELLER_C, signals))
