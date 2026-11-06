@@ -154,6 +154,17 @@ hash), so a rebuilt page's new scripts are blocked until the restart. Website pa
 `nosniff`, `X-Frame-Options: DENY`, a referrer policy and a permissions policy; responses over
 1 KB are gzip-compressed.
 
+The site's public address comes from `SITE_URL` at build time (default `http://localhost:8000`).
+It sets the canonical link, link previews, `sitemap.xml` and `robots.txt`. When deploying, build
+with the address people will use, e.g. the URL AWS assigns or a custom domain:
+
+```bash
+SITE_URL=https://abc123.us-east-1.awsapprunner.com npm run build
+```
+
+An invalid value fails the build. Contact links open the address in `QUESTION_HREF` in
+`site/lib/site.ts`.
+
 `RESERVEGUARD_SITE_DIR` (default `site/out`) points the server elsewhere. On `npm run dev`, and on
 any static host without the API, **Request a demo** has no console to open.
 

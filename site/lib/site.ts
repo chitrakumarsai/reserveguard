@@ -1,7 +1,11 @@
+// The site's public address, read at build time: the deploy sets SITE_URL to the URL AWS assigns
+// (e.g. https://abc123.us-east-1.awsapprunner.com), or a custom domain later. A bad value fails the build.
+const SITE_URL = new URL(process.env.SITE_URL ?? "http://localhost:8000").origin;
+
 // One source for the facts and actions that repeat across the page (copy rule: one fact, one wording).
 export const SITE = {
   name: "ReserveGuard",
-  url: "https://reserveguard.example",
+  url: SITE_URL,
   title: "ReserveGuard: seller reserves for Airwallex marketplaces",
   description:
     "ReserveGuard holds a reserve for each marketplace seller, pays the rest to their Airwallex connected account and re-rates one seller when new risk evidence arrives.",
@@ -14,7 +18,7 @@ export const MAIN_ACTION = {
   href: "/console",
 } as const;
 
-export const QUESTION_HREF = "mailto:hello@reserveguard.example?subject=Question%20about%20ReserveGuard";
+export const QUESTION_HREF = "mailto:chitrakumarsai@gmail.com?subject=Question%20about%20ReserveGuard";
 
 export const NAV = [
   { label: "Console", href: "#console" },
