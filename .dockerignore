@@ -1,0 +1,29 @@
+# Secrets and local state never enter the image.
+.env
+.env.*
+!.env.example
+data/*.db*
+data/*.bak
+data/*.webm
+evidence/
+
+# Caches, builds and tooling
+.git
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.coverage
+**/__pycache__
+site/node_modules
+site/.next
+site/out
+site/.tmp
+site/.taste-skill
+site/tsconfig.tsbuildinfo
+tests
+docs
+scripts
+.claude
+*.md
+!README.md
