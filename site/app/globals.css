@@ -1,0 +1,93 @@
+/* Tailwind's utilities only: its preflight reset would fight the kit's system.css.
+   The tw: prefix keeps Tailwind from generating utilities for the kit's own class names
+   (start-7 would otherwise become a 28px inline offset). */
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Page CSS, only where the kit's references say page CSS. */
+
+/* system.md: the skip link stays off the logo's line until focused. */
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.skip-link:focus {
+  width: auto;
+  height: auto;
+  clip-path: none;
+  padding: var(--s-2) var(--s-4);
+  background: var(--action);
+  color: var(--action-ink, #fff);
+  z-index: 20;
+}
+
+/* The card group's one panel height (features-2x2): lower where the two rows must fit 768px and phone screens. */
+#rates .panel { --p-h: 336px; }
+@media (min-width: 1024px) and (max-width: 1279px) { #rates .panel { --p-h: 300px; } }
+
+/* Under 640 the bar holds the logo and the menu; the hero's full-width button carries the main action. */
+@media (max-width: 639px) {
+  header.nav:not(.is-open) .nav__actions { display: none; }
+  header.nav:not(.is-open) .nav__actions + .nav__toggle { margin-left: auto; }
+}
+
+/* The hub diagram fills its lit frame; a tablet caps it, a phone stacks it as the second screen. */
+#integrations .frame--lit { min-height: 480px; display: flex; overflow: hidden; }
+#integrations .frame--lit > .dg { flex: 1 1 auto; }
+@media (min-width: 640px) and (max-width: 1023px) { #integrations .frame--lit { min-height: 0; height: 340px; } }
+@media (max-width: 639px) { #integrations { --hm: 2; } #integrations .frame--lit { min-height: 560px; } }
+
+.console-intro { margin: 0; }
+
+/* The hero frame takes the ops console's own page colour, so the screenshot and its frame read as one canvas. */
+.hero--split .hero__media { background: oklch(98.4% 0.006 85); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* app-frame recipe (sections-library.md), verbatim. */
+.app.ui { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); margin-top: var(--s-7); background: var(--u-bg); border: 1px solid var(--u-border); border-radius: var(--u-r); box-shadow: var(--u-shadow); }
+.app > .app__pane { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.app > .app__pane + .app__pane { border-left: 1px solid var(--u-line); }
+.app > .app__pane > .ui-panel { width: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.app > .app__pane::after { content: ""; position: absolute; inset: auto 0 0 0; height: 64px; background: linear-gradient(transparent, var(--u-bg)); pointer-events: none; }
+@media (min-width: 1024px) and (max-width: 1279px) { .app.ui { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); } }
+@media (max-width: 1023px) {
+  .app.ui { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .app > .app__pane--list { max-height: 252px; }
+  .app > .app__pane--list::after { display: none; }
+  .app .ui-win__side { display: none; }
+  .app .ui-win__body { grid-template-columns: minmax(0, 1fr); }
+  .app > .app__pane + .app__pane { border-left: 0; border-top: 1px solid var(--u-line); }
+}
+@media (max-width: 639px) {
+  .app.ui { grid-template-rows: minmax(0, 1fr); }
+  .app > .app__pane--list { display: none; }
+  .app > .app__pane + .app__pane { border-top: 0; }
+}
+
+/* The open memo fills its pane; its note keeps a column of its own so it never covers the page. */
+.app > .app__pane--open > .ui-doc { width: 100%; min-height: 100%; padding: var(--s-6) 248px 0 var(--s-6); }
+.app > .app__pane--open .ui-doc__note { right: var(--s-5); top: var(--s-9); }
+@media (max-width: 639px) {
+  .app > .app__pane--open > .ui-doc { padding: var(--s-5) var(--s-5) 0; }
+  .app > .app__pane--open .ui-doc__note { display: none; }
+}
+
+/* Cited evidence is read, not crossed off: keep the labels plain. */
+#rates .ui-check.is-done .ui-check__label { color: inherit; }
+#rates .ui-check.is-done .ui-check__label::after { display: none; }
+
+/* A phone holds each row's first panel only: four panels cannot fit the section's two phone screens. */
+@media (max-width: 639px) {
+  #rates .grid > .card:nth-child(2) > .panel { display: none; }
+  #rates .panel { --p-h: 200px; }
+  #rates h2 .muted { display: none; }
+  #rates .stage > .at-rise { top: 24px; }
+}
+
+
+/* Small legal pages. */
+.legal { padding-top: calc(var(--nav) + var(--s-9)); padding-bottom: var(--s-9); }
+.legal h1 { font-size: var(--t-h2); }
