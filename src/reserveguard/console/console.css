@@ -1,38 +1,41 @@
-/* ReserveGuard console: a quiet, dense "ledger" look. Colour carries meaning:
-   indigo = held reserve / base, amber = risk, teal = releases, green/amber/red = status. */
+/* ReserveGuard console: a quiet, dense "ledger" look in the website's identity. Colour carries
+   meaning: brand teal = held reserve / base, amber = risk, blue = releases, green/amber/red = status. */
 
 :root {
-  --paper: oklch(98.4% 0.006 85);
-  --surface: oklch(100% 0 0);
-  --surface-sunk: oklch(96.2% 0.008 85);
-  --line: oklch(90.5% 0.01 85);
-  --line-strong: oklch(82% 0.012 85);
-  --ink: oklch(22% 0.02 265);
-  --ink-soft: oklch(45% 0.02 265);
-  --ink-faint: oklch(60% 0.015 265);
+  /* The website's teal-on-paper identity (site/app/layout.tsx), tuned for dense tables. */
+  --paper: #f7f9f8;
+  --surface: #ffffff;
+  --surface-sunk: #ebf0ee;
+  --line: oklch(90.5% 0.012 180);
+  --line-strong: oklch(81% 0.02 185);
+  --ink: oklch(27% 0.045 205);
+  --ink-soft: #2f737d;
+  --ink-faint: oklch(54% 0.03 200);
+  --action: #06525c;
+  --action-ink: #f7f9f8;
 
-  --held: oklch(48% 0.16 268);
-  --held-soft: oklch(93% 0.035 268);
-  --risk: oklch(66% 0.17 55);
-  --risk-strong: oklch(57% 0.19 38);
-  --risk-soft: oklch(95% 0.045 70);
-  --release: oklch(58% 0.11 185);
-  --release-soft: oklch(94% 0.04 185);
-  --ok: oklch(56% 0.14 150);
-  --ok-soft: oklch(94.5% 0.05 150);
-  --warn: oklch(64% 0.15 75);
-  --warn-soft: oklch(95.5% 0.06 85);
-  --bad: oklch(55% 0.2 25);
+  --held: #06525c;
+  --held-soft: oklch(93% 0.03 195);
+  --risk: oklch(68% 0.16 62);
+  --risk-strong: oklch(52% 0.18 42);
+  --risk-ink: oklch(24% 0.05 55); /* text on the amber bar: white fails AA in light mode */
+  --risk-soft: oklch(95% 0.045 75);
+  --release: oklch(49% 0.13 245);
+  --release-soft: oklch(94.5% 0.03 245);
+  --ok: oklch(47% 0.12 150);
+  --ok-soft: oklch(94.5% 0.045 150);
+  --warn: oklch(49% 0.12 70);
+  --warn-soft: oklch(95.5% 0.055 85);
+  --bad: oklch(54% 0.2 27);
   --bad-soft: oklch(94.5% 0.04 25);
 
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-base: 0.9375rem;
   --text-lg: 1.125rem;
-  --text-kpi: clamp(1.35rem, 1.1rem + 0.8vw, 1.75rem);
-  --text-title: clamp(1.4rem, 1.15rem + 1vw, 1.9rem);
+  --text-title: clamp(1.5rem, 1.15rem + 1.2vw, 2.1rem);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -41,9 +44,11 @@
   --space-5: 1.5rem;
   --space-6: 2.25rem;
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --shadow-slip: 0 1px 0 var(--line), 0 12px 32px -18px oklch(30% 0.05 265 / 0.35);
+  /* Sharp corners for fintech, pill buttons: the site's deal. */
+  --radius-sm: 2px;
+  --radius: 4px;
+  --radius-pill: 999px;
+  --shadow-slip: 0 1px 0 var(--line), 0 14px 34px -20px oklch(30% 0.06 205 / 0.4);
   --duration-fast: 140ms;
   --duration: 260ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -52,21 +57,24 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: oklch(17% 0.012 265);
-    --surface: oklch(21% 0.014 265);
-    --surface-sunk: oklch(19% 0.012 265);
-    --line: oklch(29% 0.015 265);
-    --line-strong: oklch(37% 0.018 265);
-    --ink: oklch(94% 0.008 85);
-    --ink-soft: oklch(76% 0.012 85);
-    --ink-faint: oklch(62% 0.012 85);
-    --held: oklch(70% 0.13 268);
-    --held-soft: oklch(30% 0.06 268);
-    --risk: oklch(74% 0.15 60);
-    --risk-strong: oklch(68% 0.17 45);
+    --paper: oklch(17% 0.02 205);
+    --surface: oklch(21% 0.022 205);
+    --surface-sunk: oklch(19% 0.02 205);
+    --line: oklch(29% 0.025 205);
+    --line-strong: oklch(38% 0.03 205);
+    --ink: oklch(95% 0.008 180);
+    --ink-soft: oklch(80% 0.04 190);
+    --ink-faint: oklch(64% 0.03 195);
+    --action: oklch(80% 0.09 190);
+    --action-ink: oklch(19% 0.03 205);
+    --held: oklch(76% 0.1 192);
+    --held-soft: oklch(30% 0.05 200);
+    --risk: oklch(76% 0.14 65);
+    --risk-strong: oklch(70% 0.16 48);
+    --risk-ink: var(--surface);
     --risk-soft: oklch(31% 0.06 60);
-    --release: oklch(74% 0.1 185);
-    --release-soft: oklch(30% 0.05 185);
+    --release: oklch(74% 0.11 245);
+    --release-soft: oklch(30% 0.05 245);
     --ok: oklch(74% 0.13 150);
     --ok-soft: oklch(30% 0.06 150);
     --warn: oklch(80% 0.13 85);
@@ -88,7 +96,7 @@ body {
   font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
 h2 { font-size: var(--text-base); }
 code, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 button, input, textarea { font: inherit; color: inherit; }
@@ -106,8 +114,7 @@ button, input, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.brand-mark { width: 26px; height: 26px; fill: var(--held); }
-.brand-mark-line { stroke: var(--paper); stroke-width: 1.6; stroke-linecap: round; fill: none; }
+.brand-mark { width: 22px; height: 22px; fill: var(--action); }
 .brand-name { font-weight: 600; font-size: var(--text-lg); letter-spacing: -0.02em; }
 .brand-sub { color: var(--ink-faint); font-size: var(--text-sm); }
 .topbar-meta { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
@@ -129,20 +136,20 @@ button, input, textarea { font: inherit; color: inherit; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
   min-height: 36px; padding: 0 var(--space-4);
-  border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill); border: 1px solid var(--line-strong);
   background: var(--surface); cursor: pointer; font-weight: 500; font-size: var(--text-sm);
   transition: background var(--duration-fast), border-color var(--duration-fast),
     transform var(--duration-fast) var(--ease-out);
 }
-.btn:hover { border-color: var(--ink-faint); }
+.btn:hover { border-color: var(--ink-faint); transform: translateY(-1px); }
 .btn:active { transform: translateY(1px); }
 .btn:focus-visible, .seller:focus-visible, textarea:focus-visible, input:focus-visible {
-  outline: 2px solid var(--held); outline-offset: 2px;
+  outline: 2px solid var(--action); outline-offset: 2px;
 }
 .btn-ghost { background: transparent; }
 .btn-small { min-height: 30px; padding: 0 var(--space-3); font-size: var(--text-xs); }
-.btn-primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.btn-primary:hover { background: color-mix(in oklch, var(--ink) 86%, var(--held)); }
+.btn-primary { background: var(--action); color: var(--action-ink); border-color: var(--action); }
+.btn-primary:hover { background: color-mix(in oklch, var(--action) 84%, var(--ink)); border-color: color-mix(in oklch, var(--action) 84%, var(--ink)); }
 .btn-primary[data-armed="true"] { background: var(--risk-strong); border-color: var(--risk-strong); color: white; }
 .btn[disabled] { opacity: 0.55; cursor: progress; }
 
@@ -168,7 +175,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .seller:hover { background: var(--surface); border-color: var(--line); }
 .seller[aria-current="true"] { background: var(--surface); border-color: var(--line-strong); box-shadow: inset 3px 0 0 var(--held); }
 .seller-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
-.seller-row strong { font-weight: 600; }
+.seller-row strong { font-weight: 600; text-wrap: balance; }
 .seller-meta { color: var(--ink-faint); font-size: var(--text-xs); }
 .meter { height: 4px; border-radius: 4px; background: var(--surface-sunk); overflow: hidden; }
 .meter > span { display: block; height: 100%; background: var(--held); transform-origin: left;
@@ -177,14 +184,15 @@ button, input, textarea { font: inherit; color: inherit; }
 
 /* ---------- workspace ---------- */
 .workspace { display: grid; gap: var(--space-5); min-width: 0; }
-.seller-head h1 { font-size: var(--text-title); letter-spacing: -0.025em; }
+.seller-head h1 { font-size: var(--text-title); font-weight: 500; letter-spacing: -0.035em; }
 .seller-sub { margin: var(--space-2) 0 0; display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; color: var(--ink-faint); font-size: var(--text-sm); }
 
-.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.kpis { container-type: inline-size; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .kpi { padding: var(--space-4) var(--space-4) var(--space-4) 0; }
 .kpi + .kpi { padding-left: var(--space-4); border-left: 1px solid var(--line); }
 .kpi dt { color: var(--ink-faint); font-size: var(--text-xs); }
-.kpi dd { margin: var(--space-1) 0 0; font-size: var(--text-kpi); font-weight: 500; letter-spacing: -0.02em; }
+/* Sized to the KPI row, so a ten-character amount fits its quarter column at any width. */
+.kpi dd { margin: var(--space-1) 0 0; font-size: clamp(1.1rem, 3.3cqi, 1.75rem); font-weight: 500; letter-spacing: -0.02em; }
 .kpi dd[data-changed="true"] { animation: settle var(--duration) var(--ease-out); }
 @keyframes settle { from { opacity: 0.2; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
@@ -204,15 +212,15 @@ button, input, textarea { font: inherit; color: inherit; }
 .seg {
   position: relative; height: 100%; min-width: 2px;
   display: flex; align-items: center; padding: 0 var(--space-2);
-  font: 500 var(--text-xs) var(--font-mono); color: white; white-space: nowrap; overflow: hidden;
+  font: 500 var(--text-xs) var(--font-mono); color: var(--surface); white-space: nowrap; overflow: hidden;
   border-right: 2px solid var(--surface);
   transform-origin: left; animation: grow var(--duration) var(--ease-out) both;
 }
 .seg[data-kind="base"] { background: var(--held); }
-.seg[data-kind="risk"] { background: var(--risk); }
+.seg[data-kind="risk"] { background: var(--risk); color: var(--risk-ink); }
 .seg[data-kind="risk-strong"] { background: var(--risk-strong); }
 .seg[data-kind="cleared"] {
-  color: var(--ink-faint); text-decoration: line-through;
+  color: var(--ink-soft); text-decoration: line-through;
   background: repeating-linear-gradient(135deg, var(--release-soft) 0 6px, var(--surface) 6px 12px);
   box-shadow: inset 0 0 0 1px var(--release);
 }
@@ -234,7 +242,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .slip-body { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr); gap: var(--space-5); align-items: start; }
 .slip-amount { display: grid; gap: var(--space-1); }
 .slip-action { color: var(--ink-faint); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; }
-.slip-amount strong { font-size: clamp(1.8rem, 1.4rem + 1.4vw, 2.5rem); font-weight: 500; letter-spacing: -0.03em; }
+.slip-amount strong { font-size: clamp(1.8rem, 1.4rem + 1.4vw, 2.6rem); font-weight: 500; letter-spacing: -0.04em; }
 .slip-route { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-4); margin: 0; }
 .slip-route dt { color: var(--ink-faint); font-size: var(--text-xs); }
 .slip-route dd { margin: 2px 0 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
@@ -255,7 +263,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .ledger th { text-align: left; font-weight: 500; color: var(--ink-faint); font-size: var(--text-xs); padding: 0 var(--space-3) var(--space-2) 0; border-bottom: 1px solid var(--line-strong); }
 .ledger td { padding: var(--space-2) var(--space-3) var(--space-2) 0; border-bottom: 1px solid var(--line); vertical-align: top; }
 .ledger .num { text-align: right; font-family: var(--font-mono); white-space: nowrap; }
-.ledger .ref, .ledger .pid { font: 400 var(--text-xs) var(--font-mono); color: var(--ink-soft); overflow-wrap: anywhere; }
+.ledger td.ref, .ledger .pid { font: 400 var(--text-xs) var(--font-mono); color: var(--ink-soft); overflow-wrap: anywhere; }
 .ledger .kind::first-letter { text-transform: uppercase; }
 .ledger .empty { color: var(--ink-faint); text-align: center; padding: var(--space-5); }
 
@@ -269,7 +277,7 @@ button, input, textarea { font: inherit; color: inherit; }
 
 /* ---------- dialogs & toast ---------- */
 .dialog { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: var(--space-5); width: min(440px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-slip); }
-.dialog::backdrop { background: oklch(20% 0.02 265 / 0.45); backdrop-filter: blur(3px); }
+.dialog::backdrop { background: oklch(22% 0.04 205 / 0.45); backdrop-filter: blur(3px); }
 .dialog h2 { font-size: var(--text-lg); margin-bottom: var(--space-2); }
 .dialog label { display: block; font-size: var(--text-xs); color: var(--ink-soft); margin: var(--space-3) 0 var(--space-1); }
 .dialog input { width: 100%; min-height: 38px; padding: 0 var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--surface-sunk); }
@@ -284,6 +292,7 @@ button, input, textarea { font: inherit; color: inherit; }
   font-size: var(--text-sm); box-shadow: var(--shadow-slip); z-index: 20;
   animation: rise var(--duration) var(--ease-out);
 }
+.toast { background: var(--action); color: var(--action-ink); }
 .toast[data-tone="bad"] { background: var(--bad); color: white; }
 @keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
@@ -297,6 +306,7 @@ button, input, textarea { font: inherit; color: inherit; }
   .panel { position: static; }
   .seller-list { grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); overflow-x: auto; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi dd { font-size: clamp(1.1rem, 6.6cqi, 1.75rem); }
   .kpi:nth-child(3) { padding-left: 0; border-left: 0; }
   .slip-body { grid-template-columns: minmax(0, 1fr); }
   .brand-sub { display: none; }

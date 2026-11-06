@@ -215,7 +215,7 @@ function rateLine(kind, bps, label, note, status) {
   return el("li", { className: "rate-line", dataset: { status } }, [
     el("span", { className: "bps", text: `${sign}${pct(bps)}` }),
     el("span", { className: "what" }, [el("span", { text: label }), el("span", { className: "ids", text: note ? ` · ${note}` : "" })]),
-    el("span", { className: "chip", dataset: { tone: status === "cleared" ? "release" : kind === "base" ? "held" : kind === "total" ? "muted" : "risk" }, text: status === "clears" ? "clears" : status === "cleared" ? "cleared" : kind === "total" ? "total" : "counted" }),
+    el("span", { className: "chip", dataset: { tone: status === "cleared" || status === "clears" ? "release" : kind === "base" ? "held" : kind === "total" ? "muted" : "risk" }, text: status === "clears" ? "clears" : status === "cleared" ? "cleared" : kind === "total" ? "total" : "counted" }),
   ]);
 }
 
