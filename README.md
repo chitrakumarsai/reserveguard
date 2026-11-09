@@ -159,7 +159,7 @@ It sets the canonical link, link previews, `sitemap.xml` and `robots.txt`. When 
 with the address people will use, e.g. the URL AWS assigns or a custom domain:
 
 ```bash
-SITE_URL=https://abc123.us-east-1.awsapprunner.com npm run build
+SITE_URL=https://d448lcq306zwg.cloudfront.net npm run build
 ```
 
 An invalid value fails the build. Contact links open the address in `QUESTION_HREF` in
@@ -167,6 +167,24 @@ An invalid value fails the build. Contact links open the address in `QUESTION_HR
 
 `RESERVEGUARD_SITE_DIR` (default `site/out`) points the server elsewhere. On `npm run dev`, and on
 any static host without the API, **Request a demo** has no console to open.
+
+### Deploying to AWS Lightsail
+
+One Docker image serves the API, the console and the website. It runs on a Lightsail server
+behind a Lightsail HTTPS distribution (CloudFront). Secrets stay in `/etc/reserveguard.env` on
+the server (root only) and the ledger in `/var/lib/reserveguard`; neither is in the image.
+
+```bash
+# once: server, static IP, firewall (SSH from your IP only), HTTPS distribution
+AWS_PROFILE=<profile> deploy/lightsail-provision.sh
+aws lightsail download-default-key-pair --query privateKeyBase64 --output text \
+  > ~/.ssh/reserveguard-lightsail.pem && chmod 600 ~/.ssh/reserveguard-lightsail.pem
+
+# every release: copies the working tree and .env, builds on the server, restarts
+deploy/lightsail-deploy.sh <server-ip> <https-address-printed-by-provision>
+```
+
+The account needs Lightsail allowed (an AWS Organizations SCP can deny it even for admins).
 
 
 ## Developing with Claude Code + ECC

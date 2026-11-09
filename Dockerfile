@@ -5,7 +5,8 @@
 # never from the image.
 
 # --- the marketing website (Next.js static export) ---
-FROM node:22-bookworm-slim AS site
+# Built on the build machine's own platform: the output is plain files, so no emulation is needed.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS site
 WORKDIR /site
 COPY site/package.json site/package-lock.json ./
 RUN npm ci --no-audit --no-fund
