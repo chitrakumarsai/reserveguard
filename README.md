@@ -186,6 +186,36 @@ deploy/lightsail-deploy.sh <server-ip> <https-address-printed-by-provision>
 
 The account needs Lightsail allowed (an AWS Organizations SCP can deny it even for admins).
 
+Live at <https://d448lcq306zwg.cloudfront.net> (server `reserveguard`, static IP `3.215.52.157`,
+us-east-1). Things that bit us:
+
+- **Airwallex API keys can carry an IP allowlist.** A key missing the server's IP fails login with
+  `403 unauthorized: Forbidden`, though the same `.env` works from your machine. Add the static IP
+  to the key before deploying; recreate the IP and you must add the new one.
+- **The app needs a working Airwallex login to start.** With `USE_FAKE_AIRWALLEX=false`, a dead key
+  stops the container, and the website goes down with the API. Test a new key first; login success
+  is HTTP 201.
+- SSH (and so `lightsail-deploy.sh`) is open only to the IP that ran `lightsail-provision.sh`.
+- The deploy ships the working tree, uncommitted edits included, and replaces the server's `.env`.
+
+## Demo video
+
+`demo/record-console.cjs` records the ops console walkthrough to `demo/reserveguard-console.webm`
+(1280x720, about a minute, cursor and captions): connect, run a settlement cycle, open Seller C,
+load complaint evidence, assess, approve the $800.00 charge, then the ledger and the reconciliation
+checks. Record against a local fake-Airwallex API on an empty ledger, so no sandbox money moves:
+
+```bash
+env -u AIRWALLEX_API_KEY -u AIRWALLEX_CLIENT_ID -u AIRWALLEX_BASE_URL \
+  USE_FAKE_AIRWALLEX=true USE_LLM=false RESERVEGUARD_API_TOKEN=demo-token \
+  RESERVEGUARD_DB_PATH=/tmp/rg-demo.db uv run uvicorn reserveguard.api:app --port 8765
+# in another terminal (Node 20+, playwright-core 1.65 or a version matching your installed browsers)
+PW=/path/to/node_modules/playwright-core node demo/record-console.cjs --rehearse
+PW=/path/to/node_modules/playwright-core node demo/record-console.cjs
+```
+
+Delete `/tmp/rg-demo.db` before each take. Videos (`*.webm`) are git-ignored.
+
 
 ## Developing with Claude Code + ECC
 
