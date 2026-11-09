@@ -34,7 +34,6 @@ export function Hero() {
               width={1248}
               height={1822}
               alt="The ReserveGuard ops console: Seller C's rate rises from 15% to 35% on two cited risk signals, and an $800.00 charge waits for approval."
-              style={{ ["--ly-pos" as string]: "50% 100%" }}
               fetchPriority="high"
               data-source="client"
               data-subject="ReserveGuard ops console"
