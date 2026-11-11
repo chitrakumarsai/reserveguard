@@ -14,7 +14,7 @@ export const SITE = {
 // The demo is the real ops console, served by the same API server at /console.
 // shortcut: on a static host without the API this link 404s; point it at the hosted console when there is one.
 export const MAIN_ACTION = {
-  label: "Request a demo",
+  label: "Try the live agent",
   href: "/console",
 } as const;
 

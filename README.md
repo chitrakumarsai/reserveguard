@@ -6,6 +6,15 @@ seller's reserve when risk evidence arrives, with a short memo for every change.
 
 Built for the Airwallex Agentic Banking Hackathon (Multi-Tenant Platforms, Kit 8: Marketplace Settlement).
 
+## Try it live
+
+Open <https://d448lcq306zwg.cloudfront.net> and click **Try the live agent**, or go straight to
+<https://d448lcq306zwg.cloudfront.net/console>. No sign-in is needed during judging: the server
+runs with `RESERVEGUARD_PUBLIC_DEMO=true`, against the Airwallex sandbox, with Claude reading the
+evidence. Everyone shares one ledger, so you may see other visitors' cycles. A short path: **Run
+settlement cycle** → **Pay out**, then pick **Seller C**, **Sample: complaints**, **Assess seller**
+and **Approve**, and finish on the reconciliation checks.
+
 ## Architecture
 
 | Component | Runs as | Role |
@@ -90,9 +99,11 @@ To run it:
    Variables exported in your shell override `.env`. If an old `AIRWALLEX_*` or
    `ANTHROPIC_API_KEY` is exported, unset it or prefix the command with
    `env -u AIRWALLEX_API_KEY -u AIRWALLEX_CLIENT_ID -u AIRWALLEX_BASE_URL -u ANTHROPIC_API_KEY`.
-3. Open **http://127.0.0.1:8000**. It shows the ReserveGuard home page. Click **Request a
-   demo** to open the console (`/console`), enter the token and click **Connect**. The token is
-   kept only in that browser tab. The home page appears only once the website is built (see
+3. Open **http://127.0.0.1:8000**. It shows the ReserveGuard home page. Click **Try the live
+   agent** to open the console (`/console`), enter the token and click **Connect**. The token is
+   kept only in that browser tab. With `RESERVEGUARD_PUBLIC_DEMO=true` the console opens with no
+   token at all: anyone with the URL can use it, so turn it on only for judging, and only against
+   the sandbox (the server refuses to start with it against any other Airwallex URL). The home page appears only once the website is built (see
    [Marketing website](#marketing-website)); without it, the address opens the console directly.
 4. Walk through a cycle:
    1. **Run settlement cycle**, then **Pay out**: fee taken, reserves held, the rest paid out.
@@ -138,7 +149,7 @@ served with a strict Content-Security-Policy and writes every value as text, nev
 ### Marketing website
 
 `site/` is the public website (Next.js static export). Build it once and the API server shows it
-at `/`, with **Request a demo** opening the console on the same server. Its **Console** link in
+at `/`, with **Try the live agent** opening the console on the same server. Its **Console** link in
 the top bar only scrolls to the console screenshot on the page. It needs Node 20 or newer:
 
 ```bash
@@ -166,7 +177,7 @@ An invalid value fails the build. Contact links open the address in `QUESTION_HR
 `site/lib/site.ts`.
 
 `RESERVEGUARD_SITE_DIR` (default `site/out`) points the server elsewhere. On `npm run dev`, and on
-any static host without the API, **Request a demo** has no console to open.
+any static host without the API, **Try the live agent** has no console to open.
 
 ### Deploying to AWS Lightsail
 
@@ -196,6 +207,11 @@ us-east-1). Things that bit us:
   stops the container, and the website goes down with the API. Test a new key first; login success
   is HTTP 201.
 - SSH (and so `lightsail-deploy.sh`) is open only to the IP that ran `lightsail-provision.sh`.
+  When your IP changes, the deploy stops at "Copying source" with just `: Write error`. Update the
+  SSH rule's source IP in the Lightsail console (Networking tab), from the account that owns the
+  server.
+- Public demo mode is a `.env` setting: set `RESERVEGUARD_PUBLIC_DEMO=false` and redeploy to put
+  the token back after judging.
 - The deploy ships the working tree, uncommitted edits included, and replaces the server's `.env`.
 
 ## Demo video

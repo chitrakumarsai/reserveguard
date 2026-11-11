@@ -127,6 +127,7 @@ def test_info_reports_mode_without_secrets(client: TestClient) -> None:
         "classifier": "keywords",
         "llm_model": None,
         "seller_warning": None,
+        "public_demo": False,
     }
     assert client.get("/info").status_code == 401
 

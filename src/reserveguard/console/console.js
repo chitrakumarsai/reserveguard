@@ -93,7 +93,8 @@ function signOut(message = "") {
 async function connect(token) {
   state.token = token;
   const info = await api("/info");
-  sessionStorage.setItem(TOKEN_KEY, token);
+  if (!info.public_demo) sessionStorage.setItem(TOKEN_KEY, token);
+  $("lock").hidden = info.public_demo;
   const live = info.airwallex === "sandbox";
   $("env-airwallex").textContent = live ? "Airwallex sandbox · live" : "Simulated Airwallex";
   $("env-airwallex").dataset.tone = live ? "ok" : "muted";
@@ -429,7 +430,7 @@ function wire() {
 
 document.addEventListener("DOMContentLoaded", () => {
   wire();
+  // With no saved token, try once without one: a public demo server lets the console straight in.
   const saved = sessionStorage.getItem(TOKEN_KEY);
-  if (!saved) return $("token-dialog").showModal();
-  connect(saved).catch(() => signOut("Please sign in again."));
+  connect(saved ?? "").catch(() => signOut(saved ? "Please sign in again." : ""));
 });

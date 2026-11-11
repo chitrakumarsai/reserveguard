@@ -435,6 +435,24 @@ def test_api_fails_closed_without_a_configured_token() -> None:
     assert response.status_code == 503
 
 
+def test_public_demo_opens_the_api_without_a_token(api: respx.MockRouter) -> None:
+    client = TestClient(
+        create_app(_settings(reserveguard_api_token="", reserveguard_public_demo=True))
+    )
+    assert client.get("/reconciliation").status_code == 200
+    assert client.get("/info").json()["public_demo"] is True
+
+
+def test_public_demo_is_refused_outside_the_airwallex_sandbox() -> None:
+    settings = _settings(
+        reserveguard_public_demo=True,
+        use_fake_airwallex=False,
+        airwallex_base_url="https://api.airwallex.com",
+    )
+    with pytest.raises(ValueError, match="sandbox"):
+        create_app(settings)
+
+
 def test_info_shows_the_cached_sellers_warning(
     api: respx.MockRouter, sellers_file: Path, tmp_path: Path
 ) -> None:

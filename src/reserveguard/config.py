@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     # Bearer token for the HTTP API; while empty, every endpoint but /health returns 503.
     reserveguard_api_token: SecretStr = SecretStr("")
+    # Judging/demo only: open every endpoint without the token. Refused outside the sandbox.
+    reserveguard_public_demo: bool = False
     use_fake_airwallex: bool = True
     use_llm: bool = False
     llm_model: str = DEFAULT_LLM_MODEL

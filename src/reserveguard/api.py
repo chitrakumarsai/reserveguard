@@ -130,6 +130,7 @@ class InfoOut(BaseModel):
     classifier: str  # "claude" or "keywords"
     llm_model: str | None
     seller_warning: str | None = None  # set when sellers came from cache, not Airwallex
+    public_demo: bool = False  # the console skips the token prompt when true
 
 
 class SamplesOut(BaseModel):
@@ -197,6 +198,8 @@ def require_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> None:
     """Fail closed: no configured token means no access, not open access."""
+    if request.app.state.public_demo:
+        return
     expected: str = request.app.state.api_token
     if not expected:
         raise HTTPException(status_code=503, detail="API token not configured")
@@ -257,7 +260,11 @@ def create_app(
     settings: Settings | None = None, sellers_path: Path = SANDBOX_SELLERS_PATH
 ) -> FastAPI:
     settings = settings or get_settings()
+    is_sandbox = settings.use_fake_airwallex or "sandbox" in settings.airwallex_base_url
+    if settings.reserveguard_public_demo and not is_sandbox:
+        raise ValueError("RESERVEGUARD_PUBLIC_DEMO is only allowed against the Airwallex sandbox")
     app = FastAPI(title="ReserveGuard")
+    app.state.public_demo = settings.reserveguard_public_demo
     app.state.service, _, seller_warning = build_service(settings, sellers_path)
     assess_limit = RateLimiter(ASSESS_RATE_LIMIT, ASSESS_RATE_WINDOW_S)
     app.state.api_token = settings.reserveguard_api_token.get_secret_value()
@@ -294,6 +301,7 @@ def create_app(
             classifier="claude" if settings.use_llm else "keywords",
             llm_model=settings.llm_model if settings.use_llm else None,
             seller_warning=seller_warning,
+            public_demo=settings.reserveguard_public_demo,
         )
 
     @app.get("/samples/evidence", response_model=SamplesOut, dependencies=Authorized)

@@ -12,6 +12,7 @@ import pytest
 for name in [n for n in os.environ if n.startswith("AIRWALLEX_")]:
     del os.environ[name]  # stale shell exports would override test settings
 os.environ.update({"USE_FAKE_AIRWALLEX": "true", "USE_LLM": "false", "RESERVEGUARD_API_TOKEN": ""})
+os.environ["RESERVEGUARD_PUBLIC_DEMO"] = "false"  # a judging .env must not open the API in tests
 
 
 @pytest.fixture(autouse=True)
