@@ -35,6 +35,7 @@ def test_console_page_is_served_with_a_strict_csp(client: TestClient) -> None:
     assert "frame-ancestors 'none'" in csp
     assert "unsafe-inline" not in csp.split("style-src")[0]  # no inline scripts
     assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["cache-control"] == "no-cache"  # an old cached console.js broke sign-in
     assert "<script" in response.text and "console.js" in response.text
     assert TOKEN not in response.text
 

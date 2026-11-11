@@ -56,6 +56,8 @@ CONSOLE_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
+    # Revalidate every load (ETag makes it cheap) so a redeploy never leaves a stale console.js.
+    "Cache-Control": "no-cache",
 }
 # Inline <script> bodies (no src=) in the built website; each one is allowed by its hash.
 INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
