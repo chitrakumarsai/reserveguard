@@ -1,5 +1,6 @@
-// The real ops console at /console, captured from the live site after the demo cycle, so the
-// home page shows exactly what "Try the live agent" opens.
+// The real ops console at /console after the demo cycle, with Seller C's re-rate waiting for
+// approval, so the home page shows what "Try the live agent" opens. Captured with a gutter on
+// every side and without the top bar (it names the local, simulated backend).
 export function ConsoleFrame() {
   return (
     <section className="section" id="console" aria-labelledby="console-h">
@@ -18,9 +19,9 @@ export function ConsoleFrame() {
           srcSet="/img/console-overview-1440.webp 1440w, /img/console-overview.webp 2880w"
           sizes="(max-width: 1279px) 100vw, 1280px"
           width={1440}
-          height={900}
+          height={1245}
           loading="lazy"
-          alt="The ReserveGuard ops console: three sellers at 5%, 10% and 35%; Seller C's 35% rate split into a 15% tier base, +15% for a complaint cluster and +5% for a tracking failure, each citing evidence; all seven reconciliation checks passing."
+          alt="The ReserveGuard ops console: three sellers at 5%, 10% and 15%; Seller C's evidence supports 35%, split into a 15% tier base, +15% for a complaint cluster and +5% for a tracking failure, each citing evidence; an $800.00 charge waits for approval; all seven reconciliation checks passing."
         />
       </div>
     </section>

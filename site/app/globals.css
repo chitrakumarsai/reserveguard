@@ -61,6 +61,10 @@
   .hero.hero--split .hero__media > img { width: 100%; max-height: none; }
 }
 
+/* Sections are one screen tall by default (system.css); the console screenshot is taller than that,
+   so this section grows with it instead of letting the next section draw over the picture. */
+main > #console { height: auto; min-height: 0; }
+main > #console > .wrap { height: auto; }
 /* The real console screenshot: framed like the hero's, full width under the heading. */
 .console-shot {
   display: block; width: 100%; height: auto; margin-top: var(--s-7);
