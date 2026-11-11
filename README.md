@@ -6,6 +6,8 @@ seller's reserve when risk evidence arrives, with a short memo for every change.
 
 Built for the Airwallex Agentic Banking Hackathon (Multi-Tenant Platforms, Kit 8: Marketplace Settlement).
 
+**Live demo:** <https://d448lcq306zwg.cloudfront.net/console> (no sign-in needed; see [Try it live](#try-it-live)).
+
 ## Try it live
 
 Open <https://d448lcq306zwg.cloudfront.net> and click **Try the live agent**, or go straight to

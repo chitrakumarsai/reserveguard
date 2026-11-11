@@ -37,8 +37,6 @@ const KIT_CSS = [
   "layout/layout.css",
   "icons/icon.css",
   "ui/base.css",
-  "ui/window/fragment.css",
-  "ui/doc/fragment.css",
   "ui/stat/fragment.css",
   "ui/checklist/fragment.css",
   "ui/notify/fragment.css",

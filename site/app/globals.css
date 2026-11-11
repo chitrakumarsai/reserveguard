@@ -61,33 +61,10 @@
   .hero.hero--split .hero__media > img { width: 100%; max-height: none; }
 }
 
-/* app-frame recipe (sections-library.md), verbatim. */
-.app.ui { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); margin-top: var(--s-7); background: var(--u-bg); border: 1px solid var(--u-border); border-radius: var(--u-r); box-shadow: var(--u-shadow); }
-.app > .app__pane { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-.app > .app__pane + .app__pane { border-left: 1px solid var(--u-line); }
-.app > .app__pane > .ui-panel { width: 100%; border: 0; border-radius: 0; box-shadow: none; }
-.app > .app__pane::after { content: ""; position: absolute; inset: auto 0 0 0; height: 64px; background: linear-gradient(transparent, var(--u-bg)); pointer-events: none; }
-@media (min-width: 1024px) and (max-width: 1279px) { .app.ui { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); } }
-@media (max-width: 1023px) {
-  .app.ui { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .app > .app__pane--list { max-height: 252px; }
-  .app > .app__pane--list::after { display: none; }
-  .app .ui-win__side { display: none; }
-  .app .ui-win__body { grid-template-columns: minmax(0, 1fr); }
-  .app > .app__pane + .app__pane { border-left: 0; border-top: 1px solid var(--u-line); }
-}
-@media (max-width: 639px) {
-  .app.ui { grid-template-rows: minmax(0, 1fr); }
-  .app > .app__pane--list { display: none; }
-  .app > .app__pane + .app__pane { border-top: 0; }
-}
-
-/* The open memo fills its pane; its note keeps a column of its own so it never covers the page. */
-.app > .app__pane--open > .ui-doc { width: 100%; min-height: 100%; padding: var(--s-6) 248px 0 var(--s-6); }
-.app > .app__pane--open .ui-doc__note { right: var(--s-5); top: var(--s-9); }
-@media (max-width: 639px) {
-  .app > .app__pane--open > .ui-doc { padding: var(--s-5) var(--s-5) 0; }
-  .app > .app__pane--open .ui-doc__note { display: none; }
+/* The real console screenshot: framed like the hero's, full width under the heading. */
+.console-shot {
+  display: block; width: 100%; height: auto; margin-top: var(--s-7);
+  border-radius: var(--r-lg); background: oklch(98.4% 0.006 85); box-shadow: 0 0 0 1px var(--line);
 }
 
 /* Cited evidence is read, not crossed off: keep the labels plain. */

@@ -6,7 +6,9 @@
 //     uv run uvicorn reserveguard.api:app --port 8765
 //   node demo/record-console.cjs --rehearse   # checks every selector, records nothing
 //   node demo/record-console.cjs              # records
-// Env: BASE_URL (default http://localhost:8765), DEMO_TOKEN (default demo-token),
+// Live site in public demo mode (no token prompt; real sandbox payouts and Claude):
+//   BASE_URL=https://d448lcq306zwg.cloudfront.net OUT=demo/reserveguard-live.webm node demo/record-console.cjs
+// Env: BASE_URL (default http://localhost:8765), DEMO_TOKEN (default demo-token), OUT (video path),
 //      PW (path to a playwright/playwright-core package), CHROME (browser executable).
 // Start from an empty ledger: the story assumes no settlement has run yet.
 const { chromium } = require(process.env.PW || 'playwright');
@@ -15,7 +17,8 @@ const fs = require('fs');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8765';
 const TOKEN = process.env.DEMO_TOKEN || 'demo-token';
-const OUT = path.join(__dirname, 'reserveguard-console.webm');
+const OUT = process.env.OUT ? path.resolve(process.env.OUT) : path.join(__dirname, 'reserveguard-console.webm');
+const SLOW_CALL_MS = 180_000; // live payouts poll Airwallex until SETTLED; Claude reads evidence
 const REHEARSAL = process.argv.includes('--rehearse');
 const SIZE = { width: 1280, height: 720 };
 
@@ -62,19 +65,30 @@ async function typeSlowly(page, selector, text, label) {
   await page.waitForTimeout(500);
 }
 
+// Waits for a busy button to come back, then fails loudly if the console showed an error toast.
+async function waitDone(page, selector, label) {
+  await page.waitForFunction((sel) => !document.querySelector(sel).disabled, selector, { timeout: SLOW_CALL_MS });
+  const tone = await page.locator('#toast').getAttribute('data-tone');
+  if (tone === 'bad' && (await page.locator('#toast').isVisible())) {
+    throw new Error(`${label} failed: ${await page.locator('#toast').textContent()}`);
+  }
+}
+
+const needsToken = (page) => page.locator('#token-dialog').evaluate((d) => d.open);
+
 async function scrollTo(page, selector) {
   await page.locator(selector).first().evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   await page.waitForTimeout(1800);
 }
 
 async function rehearse(page) {
-  const checks = [
-    ['#token-input', 'token field'], ['button[type=submit]', 'Connect'],
-  ];
-  for (const [sel, label] of checks) if (!(await page.locator(sel).first().isVisible())) throw new Error(`REHEARSAL FAIL: ${label}`);
-  await page.fill('#token-input', TOKEN);
-  await page.click('button[type=submit]');
-  await page.waitForTimeout(1200);
+  if (await needsToken(page)) {
+    await page.fill('#token-input', TOKEN);
+    await page.click('#token-form button[type=submit]');
+    await page.waitForTimeout(1200);
+  } else {
+    console.log('REHEARSAL OK: public demo, no token prompt');
+  }
   for (const [sel, label] of [['#settle-open', 'Run settlement'], ['button:has-text("Seller C")', 'Seller C'],
     ['#load-risk', 'Sample: complaints'], ['#assess', 'Assess'], ['#ledger-heading', 'Ledger'], ['#refresh-checks', 'Re-run checks']]) {
     if (!(await page.locator(sel).first().isVisible())) throw new Error(`REHEARSAL FAIL: ${label} (${sel})`);
@@ -86,14 +100,19 @@ async function rehearse(page) {
 async function record(page) {
   await injectOverlays(page);
   await say(page, 'ReserveGuard ops console');
-  await typeSlowly(page, '#token-input', TOKEN, 'API token');
-  await moveAndClick(page, 'button[type=submit]', 'Connect', 2500);
-  await injectOverlays(page);
+  if (await needsToken(page)) {
+    await typeSlowly(page, '#token-input', TOKEN, 'API token');
+    await moveAndClick(page, '#token-form button[type=submit]', 'Connect', 2500);
+  }
+  await page.waitForTimeout(1500);
 
   await say(page, 'Step 1 - Run a settlement cycle');
   await moveAndClick(page, '#settle-open', 'Run settlement cycle', 1500);
   await say(page, 'Gross sales per seller; reserves are held by tier');
-  await moveAndClick(page, 'dialog[open] button[type=submit]', 'Pay out', 3000);
+  await moveAndClick(page, 'dialog[open] button[type=submit]', 'Pay out', 500);
+  await say(page, 'Payouts go to each seller on Airwallex and settle');
+  await waitDone(page, '#settle-open', 'Pay out');
+  await page.waitForTimeout(2500);
 
   await say(page, 'Step 2 - Seller C: new tier, 15% held');
   await moveAndClick(page, 'button:has-text("Seller C")', 'Seller C', 2500);
@@ -102,7 +121,9 @@ async function record(page) {
   await scrollTo(page, '#evidence-heading');
   await moveAndClick(page, '#load-risk', 'Sample: complaints', 1500);
   await say(page, 'Claude reads the evidence; fixed rules set the weights');
-  await moveAndClick(page, '#assess', 'Assess seller', 3000);
+  await moveAndClick(page, '#assess', 'Assess seller', 500);
+  await waitDone(page, '#assess', 'Assess seller');
+  await page.waitForTimeout(3000);
 
   await say(page, 'Step 4 - Why this rate: every signal cites its evidence');
   await scrollTo(page, '#why-heading');
@@ -111,7 +132,9 @@ async function record(page) {
   await say(page, 'Step 5 - Above the threshold, so ops approves');
   await moveAndClick(page, '#approve', 'Approve rate change', 2000);
   await say(page, 'Two clicks: approve, then confirm the charge');
-  await moveAndClick(page, '#approve', 'Confirm charge', 3000);
+  await moveAndClick(page, '#approve', 'Confirm charge', 500);
+  await waitDone(page, '#approve', 'Confirm charge');
+  await page.waitForTimeout(3000);
 
   await say(page, 'Step 6 - Ledger and reconciliation');
   await scrollTo(page, '#ledger-heading');
