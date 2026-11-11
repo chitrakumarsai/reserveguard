@@ -13,7 +13,7 @@ on_server() { ssh -q -i "$KEY" -o StrictHostKeyChecking=accept-new "ec2-user@$HO
 
 echo "Copying source"
 # sandbox_sellers.json is git-ignored but baked into the image (see Dockerfile).
-{ git ls-files; echo data/sandbox_sellers.json; } | COPYFILE_DISABLE=1 tar -czf - --no-xattrs -T - \
+{ git ls-files --cached --others --exclude-standard; echo data/sandbox_sellers.json; } | COPYFILE_DISABLE=1 tar -czf - --no-xattrs -T - \
   | on_server 'rm -rf ~/app && mkdir ~/app && tar -xzf - -C ~/app 2>/dev/null'
 
 echo "Copying .env to /etc/reserveguard.env (root only)"
