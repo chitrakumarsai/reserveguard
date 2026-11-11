@@ -164,6 +164,8 @@ async function renderSeller() {
   setText("kpi-debt", usd(statement.debt_cents));
   $("seller-account").textContent = statement.account_id;
   renderWhy(why);
+  $("kpi-pending").hidden = !pending;
+  $("kpi-pending").textContent = pending ? `${pct(pending.decision.new_rate_bps)} pending approval` : "";
   renderApproval(pending);
   renderLedger(statement.entries);
 }
@@ -195,10 +197,12 @@ function renderWhy(why) {
   $("rate-stack").setAttribute("aria-label", `Rate ${pct(why.rate_bps)} of a ${pct(CAP_BPS)} cap`);
 
   const lines = [rateLine("base", why.base_bps, KIND_LABELS.base, "Set by seller tier", "active")];
+  // Each counted signal's badge takes its bar segment's colour (segments alternate risk / risk-strong).
+  const segTone = new Map(counted.map((line, i) => [line, i % 2 ? "risk-strong" : "risk"]));
   for (const line of why.lines) {
     const cites = line.evidence_ids.join(", ");
     const note = line.status === "cleared" ? `${cites} · cleared by ${line.cleared_by.join(", ")}` : cites;
-    lines.push(rateLine(line.kind, line.weight_bps, KIND_LABELS[line.kind] || line.kind, note, line.status));
+    lines.push(rateLine(line.kind, line.weight_bps, KIND_LABELS[line.kind] || line.kind, note, line.status, segTone.get(line)));
   }
   const total = rateLine("total", why.rate_bps, why.capped ? "Rate (capped)" : "Rate", "", "active");
   total.classList.add("total");
@@ -211,12 +215,14 @@ function renderWhy(why) {
   $("rate-note").textContent = note;
 }
 
-function rateLine(kind, bps, label, note, status) {
+function rateLine(kind, bps, label, note, status, riskTone = "risk") {
+  // Split on the separators so each evidence ID is its own unbreakable span.
+  const ids = note ? [" · ", ...note.split(/(, | · )/)].map((part) => (/^(, | · )$/.test(part) ? part : el("span", { className: "id", text: part }))) : [];
   const sign = kind === "base" || kind === "total" ? "" : "+";
   return el("li", { className: "rate-line", dataset: { status } }, [
     el("span", { className: "bps", text: `${sign}${pct(bps)}` }),
-    el("span", { className: "what" }, [el("span", { text: label }), el("span", { className: "ids", text: note ? ` · ${note}` : "" })]),
-    el("span", { className: "chip", dataset: { tone: status === "cleared" || status === "clears" ? "release" : kind === "base" ? "held" : kind === "total" ? "muted" : "risk" }, text: status === "clears" ? "clears" : status === "cleared" ? "cleared" : kind === "total" ? "total" : "counted" }),
+    el("span", { className: "what" }, [el("span", { text: label }), el("span", { className: "ids" }, ids)]),
+    el("span", { className: "chip", dataset: { tone: status === "cleared" || status === "clears" ? "release" : kind === "base" ? "held" : kind === "total" ? "muted" : riskTone }, text: status === "clears" ? "clears" : status === "cleared" ? "cleared" : kind === "total" ? "total" : "counted" }),
   ]);
 }
 
@@ -241,7 +247,13 @@ function renderApproval(pending) {
   $("slip-to").textContent = action === "charge" ? platform : pending.account_id;
   $("slip-wallet").textContent = usd(pending.wallet_cents);
   $("slip-target").textContent = `${usd(pending.plan.held_cents)} → ${usd(pending.plan.target_cents)}`;
-  $("slip-memo").textContent = pending.memo;
+  // Plain server text: evidence IDs never break, and its ASCII "->" shows as the mono → used elsewhere.
+  const memoParts = pending.memo.split(/(\bev-[\w-]*\w|->)/);
+  $("slip-memo").replaceChildren(
+    ...memoParts.map((part) =>
+      part === "->" ? el("span", { className: "arrow", text: "→" }) : /^ev-/.test(part) ? el("span", { className: "id", text: part }) : part,
+    ),
+  );
   $("approve").textContent = cents ? `Approve ${usd(cents)} ${action}` : "Approve rate change";
   $("approve").dataset.cents = String(cents);
   $("approve-hint").textContent = "Two clicks: approve, then confirm.";

@@ -29,10 +29,10 @@ export function Hero() {
           <div className="hero__media span-6 start-7">
             <img
               src="/img/console-approval.webp"
-              srcSet="/img/console-approval-640.webp 640w, /img/console-approval.webp 1248w"
+              srcSet="/img/console-approval-640.webp 636w, /img/console-approval.webp 1272w"
               sizes="(max-width: 1023px) 100vw, 50vw"
-              width={1248}
-              height={1822}
+              width={1272}
+              height={1976}
               alt="The ReserveGuard ops console: Seller C's rate rises from 15% to 35% on two cited risk signals, and an $800.00 charge waits for approval."
               fetchPriority="high"
               data-source="client"

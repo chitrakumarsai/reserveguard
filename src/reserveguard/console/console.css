@@ -131,6 +131,7 @@ button, input, textarea { font: inherit; color: inherit; }
 .chip[data-tone="bad"] { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
 .chip[data-tone="held"] { background: var(--held-soft); color: var(--held); border-color: transparent; }
 .chip[data-tone="risk"] { background: var(--risk-soft); color: var(--risk-strong); border-color: transparent; }
+.chip[data-tone="risk-strong"] { background: var(--bad-soft); color: var(--risk-strong); border-color: transparent; }
 .chip[data-tone="release"] { background: var(--release-soft); color: var(--release); border-color: transparent; }
 
 .btn {
@@ -232,7 +233,10 @@ button, input, textarea { font: inherit; color: inherit; }
 .rate-line .bps { font-family: var(--font-mono); font-weight: 500; }
 .rate-line[data-status="cleared"] .bps, .rate-line[data-status="cleared"] .what { text-decoration: line-through; color: var(--ink-faint); }
 .rate-line .what { min-width: 0; }
-.rate-line .ids { color: var(--ink-faint); font: 400 var(--text-xs) var(--font-mono); overflow-wrap: anywhere; }
+.rate-line .ids { color: var(--ink-faint); font: 400 var(--text-xs) var(--font-mono); }
+.rate-line .id, .slip-memo .id { white-space: nowrap; } /* wrap between IDs, never inside one */
+.arrow { font-family: var(--font-mono); } /* one arrow glyph everywhere */
+.kpi-pending { margin-top: var(--space-2); }
 .rate-line.total { border-top: 1px solid var(--line-strong); font-weight: 600; }
 
 /* ---------- approval slip ---------- */
