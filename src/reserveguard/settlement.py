@@ -57,6 +57,10 @@ class PaymentNotSettledError(AirwallexError):
         self.ledger_applied = ledger_applied
 
 
+class ServiceRetiredError(RuntimeError):
+    """The demo ledger was reset: this service's ledger is archived and it moves no money."""
+
+
 _KEY_NAMESPACE = uuid.UUID("5b0c1f9e-6f0a-4c1e-9d4c-7a2f1e3b8c01")
 
 
@@ -159,6 +163,7 @@ class SettlementService:
         self._ledger_id = uuid.uuid4().hex
         self._settled: dict[tuple[str, str], SettlementLine] = {}
         self._lock = threading.RLock()
+        self._retired = False
         snapshot = store.load() if store else None
         if snapshot is None:
             # The platform account may hold money this ledger never touched (e.g. sandbox
@@ -410,11 +415,23 @@ class SettlementService:
         )
         return plan, balance
 
+    def retire(self) -> None:
+        """Stop moving money and move the stored ledger aside (kept on disk), so a new
+        service on the same path starts empty. Waits for a running command; idempotent."""
+        with self._lock:
+            if self._retired:
+                return
+            self._retired = True
+            if self._store is not None:
+                self._store.archive()
+
     @contextmanager
     def _command(self) -> Iterator[None]:
         """One money command: under the lock, with one wait deadline, saved on the way out
         even when it fails part-way (a payment recorded as pending must not be forgotten)."""
         with self._lock:
+            if self._retired:
+                raise ServiceRetiredError("the demo ledger was reset; reload to use the new one")
             self._start_deadline()
             try:
                 yield

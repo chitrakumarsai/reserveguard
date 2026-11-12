@@ -11,6 +11,7 @@ import sqlite3
 from collections.abc import Iterator, Mapping
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +126,17 @@ class SqliteStore:
                 (json.dumps(snapshot.state, sort_keys=True),),
             )
         self._rows = len(snapshot.entries)
+
+    def archive(self) -> Path:
+        """Move the database aside as ``<name>.bak-<UTC time>``; this path then starts empty."""
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+        backup = self._path.with_name(f"{self._path.name}.bak-{stamp}")
+        with closing(sqlite3.connect(self._path)) as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # every committed row into the file
+        self._path.rename(backup)
+        for suffix in ("-wal", "-shm"):
+            self._path.with_name(self._path.name + suffix).unlink(missing_ok=True)
+        return backup
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:

@@ -13,9 +13,10 @@ Built for the Airwallex Agentic Banking Hackathon (Multi-Tenant Platforms, Kit 8
 Open <https://d448lcq306zwg.cloudfront.net> and click **Try the live agent**, or go straight to
 <https://d448lcq306zwg.cloudfront.net/console>. No sign-in is needed during judging: the server
 runs with `RESERVEGUARD_PUBLIC_DEMO=true`, against the Airwallex sandbox, with Claude reading the
-evidence. Everyone shares one ledger, so you may see other visitors' cycles. A short path: **Run
-settlement cycle** → **Pay out**, then pick **Seller C**, **Sample: complaints**, **Assess seller**
-and **Approve**, and finish on the reconciliation checks.
+evidence. Everyone shares one ledger, so you may see other visitors' cycles: click **Reset demo**
+(top right) to start from an empty ledger. A short path: **Run settlement cycle** → **Pay out**,
+then pick **Seller C**, **Sample: complaints**, **Assess seller** and **Approve**, and finish on
+the reconciliation checks.
 
 ## Architecture
 
@@ -30,7 +31,7 @@ and **Approve**, and finish on the reconciliation checks.
 | `airwallex/sandbox.py` | Setup helpers (sandbox only) | Global account and deposit funding, seller onboarding (create → submit → ACTIVE), platform reports |
 | `agent/evidence.py` | Keyword rule, or Claude behind `USE_LLM` | Turns evidence into risk signals that cite evidence ids |
 | `agent/tools.py` | Read-only helpers | Seller views and memo drafting for the LLM. Never moves money |
-| `api.py` | FastAPI app | `/health`, `/sellers`, `/settle`, `/sellers/{id}/assess` (evidence in, re-rate out; increases above the thresholds and every release wait for approval; rate-limited), `/sellers/{id}/approve`; money-moving calls return once their payments have SETTLED (502 with `ledger_applied` otherwise), `/reconciliation`; bearer token on all but `/health`; fake or real client per `USE_FAKE_AIRWALLEX` |
+| `api.py` | FastAPI app | `/health`, `/sellers`, `/settle`, `/sellers/{id}/assess` (evidence in, re-rate out; increases above the thresholds and every release wait for approval; rate-limited), `/sellers/{id}/approve`; money-moving calls return once their payments have SETTLED (502 with `ledger_applied` otherwise), `/reconciliation`, `/demo/reset` (public demo only: archives the ledger file and starts an empty one; rate-limited); bearer token on all but `/health`; fake or real client per `USE_FAKE_AIRWALLEX` |
 
 The LLM never sets amounts and never holds Airwallex keys. Every number comes from deterministic code.
 
@@ -213,7 +214,8 @@ us-east-1). Things that bit us:
   SSH rule's source IP in the Lightsail console (Networking tab), from the account that owns the
   server.
 - Public demo mode is a `.env` setting: set `RESERVEGUARD_PUBLIC_DEMO=false` and redeploy to put
-  the token back after judging.
+  the token back after judging. Each **Reset demo** click leaves the old ledger on the server as
+  `/var/lib/reserveguard/reserveguard.db.bak-<UTC time>`.
 - The deploy ships the working tree, uncommitted edits included, and replaces the server's `.env`.
 
 ## Demo video

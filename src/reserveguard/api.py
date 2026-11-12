@@ -18,7 +18,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, NonNegativeInt
@@ -39,7 +39,12 @@ from reserveguard.scenario import (
     SANDBOX_SELLERS_PATH,
     build_service,
 )
-from reserveguard.settlement import PaymentNotSettledError, SettlementLine, SettlementService
+from reserveguard.settlement import (
+    PaymentNotSettledError,
+    ServiceRetiredError,
+    SettlementLine,
+    SettlementService,
+)
 
 __all__ = ["ASSESS_RATE_LIMIT", "MAX_EVIDENCE_TEXT", "RateLimiter", "app", "create_app"]
 
@@ -93,6 +98,9 @@ def site_headers(site_dir: Path) -> dict[str, str]:
 # /assess may call Claude, so it is capped per process: this many calls per window.
 ASSESS_RATE_LIMIT = 10
 ASSESS_RATE_WINDOW_S = 60.0
+# /demo/reset re-reads the Airwallex account list, so it is capped too.
+RESET_RATE_LIMIT = 5
+RESET_RATE_WINDOW_S = 60.0
 
 
 class SettleRequest(BaseModel):
@@ -233,7 +241,7 @@ class RateLimiter:
             while self._calls and now - self._calls[0] >= self._window_s:
                 self._calls.popleft()
             if len(self._calls) >= self._limit:
-                raise HTTPException(status_code=429, detail="too many assessments; retry later")
+                raise HTTPException(status_code=429, detail="too many requests; retry later")
             self._calls.append(now)
 
 
@@ -269,7 +277,27 @@ def create_app(
     app.state.public_demo = settings.reserveguard_public_demo
     app.state.service, _, seller_warning = build_service(settings, sellers_path)
     assess_limit = RateLimiter(ASSESS_RATE_LIMIT, ASSESS_RATE_WINDOW_S)
+    reset_limit = RateLimiter(RESET_RATE_LIMIT, RESET_RATE_WINDOW_S)
+    reset_lock = threading.Lock()
     app.state.api_token = settings.reserveguard_api_token.get_secret_value()
+
+    @app.exception_handler(ServiceRetiredError)
+    async def retired(_request: Request, _exc: ServiceRetiredError) -> JSONResponse:
+        detail = "The demo ledger was just reset. Reload the page and try again."
+        return JSONResponse(status_code=409, content={"detail": detail})
+
+    @app.post("/demo/reset", status_code=204, dependencies=Authorized)
+    def reset_demo() -> None:
+        """Public demo only: archive the shared ledger and start an empty one."""
+        if not app.state.public_demo:
+            raise HTTPException(status_code=404, detail="Not Found")
+        reset_limit.check()
+        with reset_lock:
+            app.state.service.retire()
+            try:
+                app.state.service, _, _ = build_service(settings, sellers_path)
+            except AirwallexError as exc:  # the old service stays retired; a retry rebuilds
+                raise provider_failure(exc) from exc
 
     @app.get("/health")
     def health() -> dict[str, str]:

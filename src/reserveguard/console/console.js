@@ -95,6 +95,7 @@ async function connect(token) {
   const info = await api("/info");
   if (!info.public_demo) sessionStorage.setItem(TOKEN_KEY, token);
   $("lock").hidden = info.public_demo;
+  $("reset-demo").hidden = !info.public_demo;
   const live = info.airwallex === "sandbox";
   $("env-airwallex").textContent = live ? "Airwallex sandbox · live" : "Simulated Airwallex";
   $("env-airwallex").dataset.tone = live ? "ok" : "muted";
@@ -399,6 +400,17 @@ async function onSettle(event) {
   });
 }
 
+async function onResetDemo() {
+  const ok = confirm("Reset the demo for everyone? The shared ledger starts empty again (the old one is archived on the server).");
+  if (!ok) return;
+  await busy($("reset-demo"), "Resetting…", async () => {
+    await api("/demo/reset", { method: "POST" });
+    state.selected = null;
+    toast("Demo reset: empty ledger, every seller back at its tier rate.");
+    await refreshAll();
+  });
+}
+
 // ---------- plumbing ----------
 async function busy(button, label, work) {
   const original = button.textContent;
@@ -436,6 +448,7 @@ function wire() {
   $("load-deliveries").addEventListener("click", () => loadSample("deliveries"));
   $("refresh-checks").addEventListener("click", () => busy($("refresh-checks"), "Checking…", renderChecks));
   $("settle-open").addEventListener("click", openSettle);
+  $("reset-demo").addEventListener("click", onResetDemo);
   $("settle-cancel").addEventListener("click", () => $("settle-dialog").close());
   $("settle-form").addEventListener("submit", onSettle);
 }

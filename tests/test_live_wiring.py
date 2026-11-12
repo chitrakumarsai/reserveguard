@@ -443,6 +443,55 @@ def test_public_demo_opens_the_api_without_a_token(api: respx.MockRouter) -> Non
     assert client.get("/info").json()["public_demo"] is True
 
 
+def test_demo_reset_starts_an_empty_ledger() -> None:
+    client = TestClient(create_app(_settings(reserveguard_public_demo=True)))
+    body = {"cycle_id": "c1", "gross_cents": DEMO_GROSS_CENTS}
+    assert client.post("/settle", json=body).status_code == 200
+
+    assert client.post("/demo/reset").status_code == 204
+
+    assert all(s["held_cents"] == 0 for s in client.get("/sellers").json())
+    assert client.get("/sellers/C/statement").json()["entries"] == []
+    assert client.post("/settle", json=body).status_code == 200  # same cycle id pays again
+
+
+def test_demo_reset_does_not_exist_outside_public_demo() -> None:
+    client = TestClient(create_app(_settings()))
+    assert client.post("/demo/reset", headers=AUTH).status_code == 404
+
+
+def test_a_retired_service_answers_409_not_500() -> None:
+    app = create_app(_settings(reserveguard_public_demo=True))
+    old = app.state.service
+    client = TestClient(app)
+    client.post("/demo/reset")
+    app.state.service = old  # a request that picked up the service just before the reset
+    body = {"cycle_id": "c1", "gross_cents": DEMO_GROSS_CENTS}
+    response = client.post("/settle", json=body)
+    assert response.status_code == 409
+    assert "reset" in response.json()["detail"]
+
+
+def test_demo_reset_reports_a_provider_failure_and_can_be_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import reserveguard.api as api_module
+
+    app = create_app(_settings(reserveguard_public_demo=True))
+    client = TestClient(app)
+    real_build = api_module.build_service
+
+    def failing_build(*_args: Any) -> Any:
+        raise AirwallexAPIError(503, "down")
+
+    monkeypatch.setattr(api_module, "build_service", failing_build)
+    assert client.post("/demo/reset").status_code == 502
+    assert client.post("/settle", json={"cycle_id": "c", "gross_cents": {}}).status_code == 409
+
+    monkeypatch.setattr(api_module, "build_service", real_build)
+    assert client.post("/demo/reset").status_code == 204
+
+
 def test_public_demo_is_refused_outside_the_airwallex_sandbox() -> None:
     settings = _settings(
         reserveguard_public_demo=True,

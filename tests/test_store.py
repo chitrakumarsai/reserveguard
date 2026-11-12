@@ -12,7 +12,12 @@ from reserveguard.airwallex.fake import FakeAirwallexClient
 from reserveguard.config import Settings
 from reserveguard.models import Seller, Tier
 from reserveguard.scenario import DEMO_GROSS_CENTS, DEMO_SELLERS, SAMPLE_EVIDENCE_PATH
-from reserveguard.settlement import PaymentNotSettledError, SettlementService, stored_sellers
+from reserveguard.settlement import (
+    PaymentNotSettledError,
+    ServiceRetiredError,
+    SettlementService,
+    stored_sellers,
+)
 from reserveguard.store import SCHEMA_VERSION, SqliteStore, StoreError
 
 pytestmark = pytest.mark.unit
@@ -194,3 +199,29 @@ def test_store_refuses_to_drop_ledger_rows(tmp_path: Path) -> None:
 
     with pytest.raises(StoreError, match="lose entries"):
         store.save(replace(snapshot, entries=snapshot.entries[:-1]))
+
+
+def test_retire_moves_the_ledger_aside_and_keeps_it(tmp_path: Path) -> None:
+    db = tmp_path / "rg.db"
+    fake = _fake()
+    service = _service(fake, db)
+    service.settle_cycle(DEMO_GROSS_CENTS, cycle_id="c1")
+    entries = service.ledger.entries
+
+    service.retire()
+
+    (backup,) = tmp_path.glob("rg.db.bak-*")
+    archived = SqliteStore(backup).load()
+    assert archived is not None and archived.entries == entries
+    assert _service(fake, db).ledger.entries == ()
+
+
+def test_retired_service_refuses_money_commands(tmp_path: Path) -> None:
+    service = _service(_fake(), tmp_path / "rg.db")
+    service.retire()
+    service.retire()  # a second reset of the same service is a no-op, not a second archive
+
+    with pytest.raises(ServiceRetiredError):
+        service.settle_cycle(DEMO_GROSS_CENTS, cycle_id="c1")
+    assert service.ledger.entries == ()
+    assert len(list(tmp_path.glob("rg.db.bak-*"))) == 1
